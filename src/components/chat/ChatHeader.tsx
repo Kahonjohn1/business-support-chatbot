@@ -2,14 +2,40 @@ import React from "react";
 
 interface ChatHeaderProps {
   onNewConversation: () => void;
+  onOpenSidebar: () => void;
 }
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onNewConversation,
+  onOpenSidebar,
 }) => {
   return (
     <header className="flex items-center justify-between px-4 sm:px-6 py-3.5 bg-[#FFFFFF] border-b border-[#E0E7E1] shrink-0">
       <div className="flex items-center gap-3">
+        {/* Mobile sidebar toggle */}
+        <button
+          type="button"
+          onClick={onOpenSidebar}
+          className="inline-flex items-center justify-center p-2 -ml-1 rounded-lg text-[#66736A] hover:text-[#17251D] hover:bg-[#F8F7F2] transition-colors lg:hidden cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#128C4A]"
+          aria-label="Open conversation history"
+          title="Open conversation history"
+        >
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.8}
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5"
+            />
+          </svg>
+        </button>
+
         {/* Simple original chat icon */}
         <div
           className="flex items-center justify-center w-10 h-10 rounded-xl bg-[#E7F5EC] border border-[#E0E7E1] text-[#128C4A] shrink-0"
