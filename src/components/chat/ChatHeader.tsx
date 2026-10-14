@@ -37,25 +37,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           </svg>
         </button>
 
-        {/* Simple original chat icon */}
-        <div
-          className="flex items-center justify-center w-10 h-10 rounded-xl bg-accent border border-border text-primary shrink-0"
-          aria-hidden="true"
-        >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={1.8}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M7.5 8.25h9m-9 3H12m-9.75 6.75l2.4-1.6a2.25 2.25 0 011.25-.38h11.1a2.25 2.25 0 002.25-2.25V5.25a2.25 2.25 0 00-2.25-2.25H4.5A2.25 2.25 0 002.25 5.25v10.5c0 .34.076.663.212.953z"
-            />
-          </svg>
-        </div>
       </div>
 
       <div className="flex items-center">
@@ -67,8 +48,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           title="Start a new chat"
         >
           <NewChatIcon className="w-4 h-4 text-primary-foreground" />
-          <span className="hidden sm:inline">New chat</span>
-          <span className="sm:hidden">New</span>
         </button>
       </div>
     </header>
