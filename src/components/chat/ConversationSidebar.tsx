@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSyncExternalStore } from "react";
+import { MessageSquarePlus } from "lucide-react";
 import type { Conversation } from "@/types/chat";
 import {
   formatConversationTime,
@@ -171,24 +172,11 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
           type="button"
           onClick={handleNewConversation}
           className="inline-flex items-center justify-center gap-2 w-full px-3.5 py-2.5 text-sm font-medium rounded-lg bg-[#128C4A] hover:bg-[#075E36] active:bg-[#075E36] text-[#FFFFFF] shadow-xs transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:ring-offset-1"
-          aria-label="Start a new conversation"
-          title="Start a new conversation"
+          aria-label="New Chat"
+          title="New Chat"
         >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 4.5v15m7.5-7.5h-15"
-            />
-          </svg>
-          <span>New conversation</span>
+          <MessageSquarePlus className="w-4 h-4" aria-hidden="true" />
+          <span>New Chat</span>
         </button>
       </div>
 
@@ -215,7 +203,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
               No saved conversations
             </p>
             <p className="text-xs text-[#66736A] mt-1 leading-relaxed">
-              Start a new conversation and it will appear here.
+              Start a new chat and it will appear here.
             </p>
           </div>
         ) : (

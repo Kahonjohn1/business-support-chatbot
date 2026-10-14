@@ -21,7 +21,7 @@ export function createMessageId(): string {
 
 export function deriveConversationTitle(text: string): string {
   const normalized = text.replace(/\s+/g, " ").trim();
-  if (!normalized) return "New conversation";
+  if (!normalized) return "New Chat";
   if (normalized.length <= MAX_TITLE_LENGTH) return normalized;
   return `${normalized.slice(0, MAX_TITLE_LENGTH - 1).trimEnd()}\u2026`;
 }
@@ -114,7 +114,7 @@ function normalizeConversation(value: unknown): Conversation | null {
     storedTitle ||
     (messages.length > 0
       ? deriveConversationTitle(messages[0].content)
-      : "New conversation");
+      : "New Chat");
 
   return { id: value.id, title, messages, createdAt, updatedAt };
 }
