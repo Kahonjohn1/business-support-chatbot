@@ -135,36 +135,35 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
           </div>
           <div className="flex flex-col min-w-0">
             <span className="text-sm font-semibold text-foreground leading-tight truncate">
-              Business Support
-            </span>
-            <span className="text-[11px] text-muted-foreground truncate">
               Conversation history
             </span>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onClose}
-          className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-background rounded-lg transition-colors lg:hidden cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary"
-          aria-label="Close conversation history"
-          title="Close conversation history"
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-            aria-hidden="true"
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-background rounded-lg transition-colors lg:hidden cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary"
+            aria-label="Close conversation history"
+            title="Close conversation history"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div className="px-3 pt-3 shrink-0">

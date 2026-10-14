@@ -1,6 +1,5 @@
 import React from "react";
 import { NewChatIcon } from "./NewChatIcon";
-import { ThemeToggle } from "./ThemeToggle";
 
 interface ChatHeaderProps {
   onNewConversation: () => void;
@@ -57,24 +56,9 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             />
           </svg>
         </div>
-
-        <div className="flex flex-col">
-          <div className="flex items-center gap-2">
-            <h1 className="text-base font-semibold text-foreground leading-tight">
-              Business Support
-            </h1>
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-accent text-accent-foreground border border-border">
-              Frontend Demo
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Operational workspace &amp; communication assistant
-          </p>
-        </div>
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3">
-        <ThemeToggle />
+      <div className="flex items-center">
         <button
           type="button"
           onClick={onNewConversation}
