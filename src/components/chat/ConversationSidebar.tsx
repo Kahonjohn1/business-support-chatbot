@@ -170,7 +170,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         <button
           type="button"
           onClick={handleNewConversation}
-          className="inline-flex items-center justify-center gap-2 w-full px-3.5 py-2.5 text-sm font-medium rounded-lg bg-primary hover:bg-primary-hover active:bg-primary-hover text-primary-foreground shadow-xs transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:ring-offset-1"
+          className="inline-flex items-center justify-center gap-2 w-full px-3.5 py-2.5 text-sm font-medium rounded-lg bg-primary hover:bg-primary-hover active:bg-primary-hover text-primary-foreground shadow-xs transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
           aria-label="New Chat"
           title="New Chat"
         >

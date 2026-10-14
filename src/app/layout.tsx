@@ -3,8 +3,8 @@ import "./globals.css";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
-  title: "Business Support",
-  description: "Business Support Chatbot frontend demo.",
+  title: "Marque Support",
+  description: "Marque Support Chatbot frontend demo.",
 };
 
 export default function RootLayout({

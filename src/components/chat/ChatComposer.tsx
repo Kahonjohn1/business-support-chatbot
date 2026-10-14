@@ -121,7 +121,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled}
-            className={`inline-flex items-center justify-center p-2.5 rounded-xl transition-colors shrink-0 focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:ring-offset-1 ${
+            className={`inline-flex items-center justify-center p-2.5 rounded-xl transition-colors shrink-0 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${
               disabled
                 ? "text-muted-foreground opacity-60 cursor-not-allowed"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
@@ -160,7 +160,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           <button
             type="submit"
             disabled={isSendDisabled}
-            className={`inline-flex items-center justify-center p-2.5 rounded-xl font-medium transition-colors shrink-0 focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:ring-offset-1 ${
+            className={`inline-flex items-center justify-center p-2.5 rounded-xl font-medium transition-colors shrink-0 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${
               isSendDisabled
                 ? "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
                 : "bg-primary hover:bg-primary-hover active:bg-primary-hover text-primary-foreground shadow-xs cursor-pointer"

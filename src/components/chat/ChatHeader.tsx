@@ -62,11 +62,11 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <button
           type="button"
           onClick={onNewConversation}
-          className="inline-flex items-center gap-2 px-3 sm:px-3.5 py-2 text-xs font-medium rounded-lg transition-colors border bg-surface hover:bg-accent active:bg-muted text-foreground border-border cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
+          className="inline-flex items-center gap-2 px-3 sm:px-3.5 py-2 text-xs font-medium rounded-lg transition-colors border border-transparent bg-primary hover:bg-primary-hover active:bg-primary-hover text-primary-foreground shadow-xs cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
           aria-label="Start a new chat"
           title="Start a new chat"
         >
-          <NewChatIcon className="w-4 h-4 text-primary" />
+          <NewChatIcon className="w-4 h-4 text-primary-foreground" />
           <span className="hidden sm:inline">New chat</span>
           <span className="sm:hidden">New</span>
         </button>

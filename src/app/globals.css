@@ -6,16 +6,16 @@
   color-scheme: light;
 
   /* Semantic theme tokens (light) */
-  --background: #F8F7F2;
+  --background: #F4F7F6;
   --surface: #FFFFFF;
   --foreground: #17251D;
-  --muted: #E0E7E1;
+  --muted: #E3EAE7;
   --muted-foreground: #66736A;
-  --border: #E0E7E1;
-  --accent: #E7F5EC;
-  --accent-foreground: #075E36;
-  --primary: #128C4A;
-  --primary-hover: #075E36;
+  --border: #E1E8E5;
+  --accent: #E8F7EF;
+  --accent-foreground: #075E46;
+  --primary: #128C5A;
+  --primary-hover: #075E46;
   --primary-foreground: #FFFFFF;
   --danger: #B42318;
   --danger-subtle: #FEF3F2;
@@ -23,14 +23,14 @@
   --switch-thumb: #FFFFFF;
 
   /* Brand palette */
-  --primary-green: #128C4A;
-  --deep-green: #075E36;
-  --bright-green: #25D366;
-  --soft-green: #E7F5EC;
-  --warm-off-white: #F8F7F2;
+  --brand-green: #075E46;
+  --action-green: #128C5A;
+  --accent-green: #25D366;
+  --selected-green: #E8F7EF;
+  --cool-gray: #F4F7F6;
   --main-text: #17251D;
   --secondary-text: #66736A;
-  --border-color: #E0E7E1;
+  --border-color: #E1E8E5;
   --white: #FFFFFF;
 }
 
@@ -38,16 +38,16 @@
   color-scheme: dark;
 
   /* Semantic theme tokens (dark) */
-  --background: #0E1512;
-  --surface: #161E1A;
+  --background: #0F1413;
+  --surface: #161C1A;
   --foreground: #E8EFEA;
-  --muted: #253029;
+  --muted: #232B28;
   --muted-foreground: #9BA8A0;
-  --border: #2A352E;
-  --accent: #1B2A22;
-  --accent-foreground: #8FE0AE;
-  --primary: #1FA85C;
-  --primary-hover: #17854A;
+  --border: #2A3330;
+  --accent: #17281F;
+  --accent-foreground: #86DCAB;
+  --primary: #0E8552;
+  --primary-hover: #0C7246;
   --primary-foreground: #FFFFFF;
   --danger: #F97066;
   --danger-subtle: #3A1E1C;
@@ -56,14 +56,14 @@
 }
 
 @theme {
-  --color-primary-green: #128C4A;
-  --color-deep-green: #075E36;
-  --color-bright-green: #25D366;
-  --color-soft-green: #E7F5EC;
-  --color-warm-off-white: #F8F7F2;
+  --color-brand-green: #075E46;
+  --color-action-green: #128C5A;
+  --color-accent-green: #25D366;
+  --color-selected-green: #E8F7EF;
+  --color-cool-gray: #F4F7F6;
   --color-main-text: #17251D;
   --color-secondary-text: #66736A;
-  --color-border-subtle: #E0E7E1;
+  --color-border-subtle: #E1E8E5;
   --color-pure-white: #FFFFFF;
 }
 

@@ -15,7 +15,11 @@ export const ThemeToggle: React.FC = () => {
       aria-label="Toggle dark mode"
       title={isDark ? "Switch to light mode" : "Switch to dark mode"}
       onClick={toggleTheme}
-      className="relative inline-flex items-center w-14 h-8 shrink-0 rounded-full border border-border bg-muted transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+      className={`relative inline-flex items-center w-14 h-8 shrink-0 rounded-full border transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
+        isDark
+          ? "bg-primary border-primary/60"
+          : "bg-muted border-border"
+      }`}
     >
       <span
         aria-hidden="true"
