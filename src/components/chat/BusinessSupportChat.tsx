@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChatMessage } from "@/types/chat";
+import type { Attachment, ChatMessage } from "@/types/chat";
 import { ChatHeader } from "./ChatHeader";
 import { MessageList } from "./MessageList";
 import { ChatComposer } from "./ChatComposer";
@@ -9,6 +9,11 @@ import { ErrorBanner } from "./ErrorBanner";
 import { ConversationSidebar } from "./ConversationSidebar";
 import { useConversations } from "@/hooks/useConversations";
 import { createMessageId, deriveConversationTitle } from "@/lib/conversations";
+import {
+  createAttachmentFromFile,
+  revokeAttachmentPreview,
+  validateAttachmentFile,
+} from "@/lib/attachments";
 
 // This is a frontend-only demonstration. No API, AI model, or backend is involved.
 // The loading period is a local timer and the resulting message is intentionally an error.
@@ -31,6 +36,8 @@ export const BusinessSupportChat: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
 
   // Guard to ensure any asynchronous demonstration cannot update a reset conversation
   const conversationSessionRef = useRef<number>(0);
@@ -91,12 +98,53 @@ export const BusinessSupportChat: React.FC = () => {
     setError(null);
   }, [clearDemoTimer]);
 
+  // Release the object URLs of any pending composer attachments and reset them.
+  const clearComposerAttachments = () => {
+    attachments.forEach(revokeAttachmentPreview);
+    setAttachments([]);
+    setAttachmentError(null);
+  };
+
+  const handleFilesSelected = (files: FileList) => {
+    const selected = Array.from(files);
+    if (selected.length === 0) {
+      return;
+    }
+
+    const accepted: Attachment[] = [];
+    const errors: string[] = [];
+
+    for (const file of selected) {
+      const validationError = validateAttachmentFile(file);
+      if (validationError) {
+        errors.push(validationError);
+        continue;
+      }
+      accepted.push(createAttachmentFromFile(file));
+    }
+
+    if (accepted.length > 0) {
+      setAttachments((prev) => [...prev, ...accepted]);
+    }
+    setAttachmentError(errors.length > 0 ? errors.join(" ") : null);
+  };
+
+  const handleRemoveAttachment = (id: string) => {
+    const target = attachments.find((attachment) => attachment.id === id);
+    if (target) {
+      revokeAttachmentPreview(target);
+    }
+    setAttachments((prev) => prev.filter((attachment) => attachment.id !== id));
+    setAttachmentError(null);
+  };
+
   const handleSendMessage = () => {
     // 1. Trim whitespace from the input.
     const trimmed = input.trim();
+    const hasAttachments = attachments.length > 0;
 
-    // 2. If the message is empty, do nothing.
-    if (!trimmed) {
+    // 2. If there is neither text nor an attachment, do nothing.
+    if (!trimmed && !hasAttachments) {
       return;
     }
 
@@ -105,26 +153,31 @@ export const BusinessSupportChat: React.FC = () => {
       return;
     }
 
-    // 4. Create a user message containing a unique ID, role "user", trimmed content, and ISO timestamp.
+    // 4. Create a user message containing a unique ID, role "user", trimmed content,
+    //    ISO timestamp, and any selected attachment metadata.
     const userMessage: ChatMessage = {
       id: createMessageId(),
       role: "user",
       content: trimmed,
       createdAt: new Date().toISOString(),
+      ...(hasAttachments ? { attachments } : {}),
     };
 
     // 5. Append to the active conversation, or start a new one titled from the message.
     const conversationId = appendMessage(
       activeConversationId,
       userMessage,
-      deriveConversationTitle(trimmed)
+      deriveConversationTitle(trimmed || attachments[0]?.name || "")
     );
     if (conversationId !== activeConversationId) {
       setActiveConversationId(conversationId);
     }
 
-    // 6. Clear the composer after the user message is added to local state.
+    // 6. Clear the composer only after the message has been accepted. The attachments
+    //    are now part of the message, so their object URLs must not be revoked here.
     setInput("");
+    setAttachments([]);
+    setAttachmentError(null);
 
     // 7. Clear any previous error and start the local loading demonstration.
     runDemo();
@@ -149,6 +202,7 @@ export const BusinessSupportChat: React.FC = () => {
   const handleNewConversation = () => {
     // Existing conversations are preserved; only the active view is cleared.
     resetTransientState();
+    clearComposerAttachments();
     setActiveConversationId(null);
     setInput("");
   };
@@ -156,6 +210,7 @@ export const BusinessSupportChat: React.FC = () => {
   const handleSelectConversation = (id: string) => {
     // Switching conversations cancels any pending demonstration to avoid carrying state over.
     resetTransientState();
+    clearComposerAttachments();
     setActiveConversationId(id);
     setInput("");
   };
@@ -165,10 +220,16 @@ export const BusinessSupportChat: React.FC = () => {
   };
 
   const handleDeleteConversation = (id: string) => {
+    const target = conversations.find((conversation) => conversation.id === id);
+    target?.messages.forEach((message) =>
+      message.attachments?.forEach(revokeAttachmentPreview)
+    );
+
     removeConversation(id);
 
     if (activeConversationId === id) {
       resetTransientState();
+      clearComposerAttachments();
       setActiveConversationId(null);
       setInput("");
     }
@@ -223,6 +284,10 @@ export const BusinessSupportChat: React.FC = () => {
           onChange={setInput}
           onSend={handleSendMessage}
           disabled={isLoading}
+          attachments={attachments}
+          attachmentError={attachmentError}
+          onFilesSelected={handleFilesSelected}
+          onRemoveAttachment={handleRemoveAttachment}
         />
       </div>
     </section>

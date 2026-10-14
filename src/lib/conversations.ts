@@ -1,4 +1,6 @@
 import type {
+  Attachment,
+  AttachmentKind,
   ChatMessage,
   Conversation,
   ConversationGroup,
@@ -32,6 +34,42 @@ function isMessageRole(value: unknown): value is MessageRole {
   return value === "user" || value === "assistant";
 }
 
+function isAttachmentKind(value: unknown): value is AttachmentKind {
+  return value === "image" || value === "document";
+}
+
+// Attachments are restored as metadata only. File bytes (and their object URLs)
+// are never persisted, so restored attachments are marked as unavailable.
+function normalizeAttachment(value: unknown): Attachment | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.id !== "string" ||
+    typeof value.name !== "string" ||
+    typeof value.type !== "string" ||
+    typeof value.size !== "number" ||
+    !isAttachmentKind(value.kind)
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    name: value.name,
+    size: value.size,
+    type: value.type,
+    kind: value.kind,
+    contentAvailable: false,
+  };
+}
+
+function normalizeAttachments(value: unknown): Attachment[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const attachments = value
+    .map(normalizeAttachment)
+    .filter((attachment): attachment is Attachment => attachment !== null);
+  return attachments.length > 0 ? attachments : undefined;
+}
+
 function normalizeMessage(value: unknown): ChatMessage | null {
   if (!isRecord(value)) return null;
   if (
@@ -43,11 +81,14 @@ function normalizeMessage(value: unknown): ChatMessage | null {
     return null;
   }
 
+  const attachments = normalizeAttachments(value.attachments);
+
   return {
     id: value.id,
     role: value.role,
     content: value.content,
     createdAt: value.createdAt,
+    ...(attachments ? { attachments } : {}),
   };
 }
 
@@ -96,11 +137,56 @@ export function loadConversations(): Conversation[] {
   }
 }
 
+// Strip runtime-only fields (object URLs / availability flags) before writing
+// to localStorage so only safe, serializable metadata is persisted.
+interface StoredAttachment {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  kind: AttachmentKind;
+}
+
+function toStoredAttachment(attachment: Attachment): StoredAttachment {
+  return {
+    id: attachment.id,
+    name: attachment.name,
+    size: attachment.size,
+    type: attachment.type,
+    kind: attachment.kind,
+  };
+}
+
+function toStoredMessage(message: ChatMessage) {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    createdAt: message.createdAt,
+    ...(message.attachments && message.attachments.length > 0
+      ? { attachments: message.attachments.map(toStoredAttachment) }
+      : {}),
+  };
+}
+
+function toStoredConversation(conversation: Conversation) {
+  return {
+    id: conversation.id,
+    title: conversation.title,
+    createdAt: conversation.createdAt,
+    updatedAt: conversation.updatedAt,
+    messages: conversation.messages.map(toStoredMessage),
+  };
+}
+
 export function saveConversations(conversations: Conversation[]): void {
   if (typeof window === "undefined") return;
 
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(conversations.map(toStoredConversation))
+    );
   } catch {
     // Persistence is best-effort; the chat keeps working in memory.
   }

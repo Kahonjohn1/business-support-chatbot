@@ -1,10 +1,25 @@
 export type MessageRole = "user" | "assistant";
 
+export type AttachmentKind = "image" | "document";
+
+export interface Attachment {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  kind: AttachmentKind;
+  /** In-memory object URL used for image thumbnails. Never persisted. */
+  previewUrl?: string;
+  /** False once restored from storage, because file bytes are not persisted. */
+  contentAvailable: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;
   content: string;
   createdAt: string;
+  attachments?: Attachment[];
 }
 
 export interface ChatState {
