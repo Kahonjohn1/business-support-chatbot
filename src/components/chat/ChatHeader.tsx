@@ -1,4 +1,5 @@
 import React from "react";
+import { NewChatIcon } from "./NewChatIcon";
 
 interface ChatHeaderProps {
   onNewConversation: () => void;
@@ -76,24 +77,11 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           type="button"
           onClick={onNewConversation}
           className="inline-flex items-center gap-2 px-3 sm:px-3.5 py-2 text-xs font-medium rounded-lg transition-colors border bg-[#FFFFFF] hover:bg-[#E7F5EC] active:bg-[#E0E7E1] text-[#17251D] border-[#E0E7E1] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#128C4A] focus:ring-offset-1"
-          aria-label="Start a new conversation"
-          title="Start a new conversation"
+          aria-label="Start a new chat"
+          title="Start a new chat"
         >
-          <svg
-            className="w-4 h-4 text-[#128C4A]"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 4.5v15m7.5-7.5h-15"
-            />
-          </svg>
-          <span className="hidden sm:inline">New conversation</span>
+          <NewChatIcon className="w-4 h-4 text-[#128C4A]" />
+          <span className="hidden sm:inline">New chat</span>
           <span className="sm:hidden">New</span>
         </button>
       </div>
