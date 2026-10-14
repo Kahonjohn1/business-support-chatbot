@@ -28,9 +28,9 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onSelectPrompt }) => {
   return (
     <div className="flex flex-col items-center justify-center h-full px-4 sm:px-6 py-8 text-center max-w-xl mx-auto my-auto">
       {/* Icon */}
-      <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-[#E7F5EC] border border-[#E0E7E1] mb-5">
+      <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-accent border border-border mb-5">
         <svg
-          className="w-7 h-7 text-[#128C4A]"
+          className="w-7 h-7 text-primary"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -46,10 +46,10 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onSelectPrompt }) => {
       </div>
 
       {/* Heading & Supporting Text */}
-      <h2 className="text-xl sm:text-2xl font-semibold text-[#17251D] tracking-tight">
+      <h2 className="text-xl sm:text-2xl font-semibold text-foreground tracking-tight">
         How can we help your business today?
       </h2>
-      <p className="text-sm text-[#66736A] mt-2 max-w-md leading-relaxed">
+      <p className="text-sm text-muted-foreground mt-2 max-w-md leading-relaxed">
         Draft communications, refine your writing, and organize your ideas in one place.
       </p>
 
@@ -61,13 +61,13 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onSelectPrompt }) => {
               key={item.id}
               type="button"
               onClick={() => onSelectPrompt(item.text)}
-              className="flex items-center justify-between p-3.5 bg-[#FFFFFF] hover:bg-[#E7F5EC] active:bg-[#E0E7E1] border border-[#E0E7E1] rounded-xl text-left transition-colors group cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#128C4A]"
+              className="flex items-center justify-between p-3.5 bg-surface hover:bg-accent active:bg-muted border border-border rounded-xl text-left transition-colors group cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary"
             >
-              <span className="text-sm font-medium text-[#17251D] group-hover:text-[#075E36]">
+              <span className="text-sm font-medium text-foreground group-hover:text-accent-foreground">
                 {item.text}
               </span>
               <svg
-                className="w-4 h-4 text-[#66736A] group-hover:text-[#128C4A] shrink-0 ml-2 transition-transform group-hover:translate-x-0.5"
+                className="w-4 h-4 text-muted-foreground group-hover:text-primary shrink-0 ml-2 transition-transform group-hover:translate-x-0.5"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"

@@ -1,5 +1,6 @@
 import React from "react";
 import { NewChatIcon } from "./NewChatIcon";
+import { ThemeToggle } from "./ThemeToggle";
 
 interface ChatHeaderProps {
   onNewConversation: () => void;
@@ -11,13 +12,13 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onOpenSidebar,
 }) => {
   return (
-    <header className="flex items-center justify-between px-4 sm:px-6 py-3.5 bg-[#FFFFFF] border-b border-[#E0E7E1] shrink-0">
+    <header className="flex items-center justify-between px-4 sm:px-6 py-3.5 bg-surface border-b border-border shrink-0">
       <div className="flex items-center gap-3">
         {/* Mobile sidebar toggle */}
         <button
           type="button"
           onClick={onOpenSidebar}
-          className="inline-flex items-center justify-center p-2 -ml-1 rounded-lg text-[#66736A] hover:text-[#17251D] hover:bg-[#F8F7F2] transition-colors lg:hidden cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#128C4A]"
+          className="inline-flex items-center justify-center p-2 -ml-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-background transition-colors lg:hidden cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary"
           aria-label="Open conversation history"
           title="Open conversation history"
         >
@@ -39,7 +40,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
         {/* Simple original chat icon */}
         <div
-          className="flex items-center justify-center w-10 h-10 rounded-xl bg-[#E7F5EC] border border-[#E0E7E1] text-[#128C4A] shrink-0"
+          className="flex items-center justify-center w-10 h-10 rounded-xl bg-accent border border-border text-primary shrink-0"
           aria-hidden="true"
         >
           <svg
@@ -59,28 +60,29 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
         <div className="flex flex-col">
           <div className="flex items-center gap-2">
-            <h1 className="text-base font-semibold text-[#17251D] leading-tight">
+            <h1 className="text-base font-semibold text-foreground leading-tight">
               Business Support
             </h1>
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#E7F5EC] text-[#075E36] border border-[#E0E7E1]">
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-accent text-accent-foreground border border-border">
               Frontend Demo
             </span>
           </div>
-          <p className="text-xs text-[#66736A] mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             Operational workspace &amp; communication assistant
           </p>
         </div>
       </div>
 
-      <div className="flex items-center">
+      <div className="flex items-center gap-2 sm:gap-3">
+        <ThemeToggle />
         <button
           type="button"
           onClick={onNewConversation}
-          className="inline-flex items-center gap-2 px-3 sm:px-3.5 py-2 text-xs font-medium rounded-lg transition-colors border bg-[#FFFFFF] hover:bg-[#E7F5EC] active:bg-[#E0E7E1] text-[#17251D] border-[#E0E7E1] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#128C4A] focus:ring-offset-1"
+          className="inline-flex items-center gap-2 px-3 sm:px-3.5 py-2 text-xs font-medium rounded-lg transition-colors border bg-surface hover:bg-accent active:bg-muted text-foreground border-border cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
           aria-label="Start a new chat"
           title="Start a new chat"
         >
-          <NewChatIcon className="w-4 h-4 text-[#128C4A]" />
+          <NewChatIcon className="w-4 h-4 text-primary" />
           <span className="hidden sm:inline">New chat</span>
           <span className="sm:hidden">New</span>
         </button>

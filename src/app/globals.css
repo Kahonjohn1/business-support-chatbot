@@ -1,6 +1,28 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
+  color-scheme: light;
+
+  /* Semantic theme tokens (light) */
+  --background: #F8F7F2;
+  --surface: #FFFFFF;
+  --foreground: #17251D;
+  --muted: #E0E7E1;
+  --muted-foreground: #66736A;
+  --border: #E0E7E1;
+  --accent: #E7F5EC;
+  --accent-foreground: #075E36;
+  --primary: #128C4A;
+  --primary-hover: #075E36;
+  --primary-foreground: #FFFFFF;
+  --danger: #B42318;
+  --danger-subtle: #FEF3F2;
+  --warning: #B54708;
+  --switch-thumb: #FFFFFF;
+
+  /* Brand palette */
   --primary-green: #128C4A;
   --deep-green: #075E36;
   --bright-green: #25D366;
@@ -10,6 +32,27 @@
   --secondary-text: #66736A;
   --border-color: #E0E7E1;
   --white: #FFFFFF;
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* Semantic theme tokens (dark) */
+  --background: #0E1512;
+  --surface: #161E1A;
+  --foreground: #E8EFEA;
+  --muted: #253029;
+  --muted-foreground: #9BA8A0;
+  --border: #2A352E;
+  --accent: #1B2A22;
+  --accent-foreground: #8FE0AE;
+  --primary: #1FA85C;
+  --primary-hover: #17854A;
+  --primary-foreground: #FFFFFF;
+  --danger: #F97066;
+  --danger-subtle: #3A1E1C;
+  --warning: #F7B955;
+  --switch-thumb: #E8EFEA;
 }
 
 @theme {
@@ -24,11 +67,58 @@
   --color-pure-white: #FFFFFF;
 }
 
-body {
-  background-color: var(--warm-off-white);
-  color: var(--main-text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  margin: 0;
-  padding: 0;
-  -webkit-font-smoothing: antialiased;
+/* Map semantic tokens to Tailwind color utilities. Because the values are
+   var() references, overriding them under `.dark` retheme every utility. */
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-warning: var(--warning);
+  --color-switch-thumb: var(--switch-thumb);
+}
+
+@layer base {
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Subtle theme transition, disabled for users who prefer reduced motion.
+   Kept in the base layer so utility classes (e.g. transition-transform) win. */
+@layer base {
+  @media (prefers-reduced-motion: no-preference) {
+    *,
+    *::before,
+    *::after {
+      transition-property: color, background-color, border-color, fill, stroke;
+      transition-timing-function: ease;
+      transition-duration: 180ms;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }

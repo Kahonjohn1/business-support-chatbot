@@ -109,14 +109,14 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   return (
     <aside
       aria-label="Conversation history"
-      className={`absolute inset-y-0 left-0 z-40 flex w-72 max-w-[82%] flex-col bg-[#FFFFFF] border-r border-[#E0E7E1] transition-transform duration-200 ease-out lg:static lg:z-auto lg:w-72 lg:max-w-none lg:translate-x-0 ${
+      className={`absolute inset-y-0 left-0 z-40 flex w-72 max-w-[82%] flex-col bg-surface border-r border-border transition-transform duration-200 ease-out lg:static lg:z-auto lg:w-72 lg:max-w-none lg:translate-x-0 ${
         isOpen ? "translate-x-0 shadow-lg lg:shadow-none" : "-translate-x-full"
       }`}
     >
-      <div className="flex items-center justify-between gap-2 px-4 py-4 border-b border-[#E0E7E1] shrink-0">
+      <div className="flex items-center justify-between gap-2 px-4 py-4 border-b border-border shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
           <div
-            className="flex items-center justify-center w-9 h-9 rounded-xl bg-[#E7F5EC] border border-[#E0E7E1] text-[#128C4A] shrink-0"
+            className="flex items-center justify-center w-9 h-9 rounded-xl bg-accent border border-border text-primary shrink-0"
             aria-hidden="true"
           >
             <svg
@@ -134,10 +134,10 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
             </svg>
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="text-sm font-semibold text-[#17251D] leading-tight truncate">
+            <span className="text-sm font-semibold text-foreground leading-tight truncate">
               Business Support
             </span>
-            <span className="text-[11px] text-[#66736A] truncate">
+            <span className="text-[11px] text-muted-foreground truncate">
               Conversation history
             </span>
           </div>
@@ -146,7 +146,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         <button
           type="button"
           onClick={onClose}
-          className="p-1.5 text-[#66736A] hover:text-[#17251D] hover:bg-[#F8F7F2] rounded-lg transition-colors lg:hidden cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#128C4A]"
+          className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-background rounded-lg transition-colors lg:hidden cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary"
           aria-label="Close conversation history"
           title="Close conversation history"
         >
@@ -171,7 +171,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         <button
           type="button"
           onClick={handleNewConversation}
-          className="inline-flex items-center justify-center gap-2 w-full px-3.5 py-2.5 text-sm font-medium rounded-lg bg-[#128C4A] hover:bg-[#075E36] active:bg-[#075E36] text-[#FFFFFF] shadow-xs transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:ring-offset-1"
+          className="inline-flex items-center justify-center gap-2 w-full px-3.5 py-2.5 text-sm font-medium rounded-lg bg-primary hover:bg-primary-hover active:bg-primary-hover text-primary-foreground shadow-xs transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:ring-offset-1"
           aria-label="New Chat"
           title="New Chat"
         >
@@ -183,9 +183,9 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
       <div className="flex-1 overflow-y-auto px-3 py-3">
         {conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-4 py-10 text-center">
-            <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-[#F8F7F2] border border-[#E0E7E1] mb-3">
+            <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-background border border-border mb-3">
               <svg
-                className="w-5 h-5 text-[#66736A]"
+                className="w-5 h-5 text-muted-foreground"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -199,10 +199,10 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                 />
               </svg>
             </div>
-            <p className="text-sm font-medium text-[#17251D]">
+            <p className="text-sm font-medium text-foreground">
               No saved conversations
             </p>
-            <p className="text-xs text-[#66736A] mt-1 leading-relaxed">
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
               Start a new chat and it will appear here.
             </p>
           </div>
@@ -210,7 +210,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
           <div className="space-y-4">
             {groups.map((group) => (
               <div key={group.label}>
-                <h3 className="px-2 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#66736A]">
+                <h3 className="px-2 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   {group.label}
                 </h3>
                 <ul className="space-y-0.5">
@@ -221,7 +221,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                     return (
                       <li key={conversation.id} className="relative">
                         {isRenaming ? (
-                          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-[#F8F7F2] border border-[#128C4A]/40">
+                          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-background border border-primary/40">
                             <input
                               ref={renameInputRef}
                               value={renameValue}
@@ -237,33 +237,33 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                               }}
                               onBlur={commitRename}
                               aria-label="Conversation title"
-                              className="flex-1 min-w-0 bg-transparent text-sm text-[#17251D] focus:outline-none"
+                              className="flex-1 min-w-0 bg-transparent text-sm text-foreground focus:outline-none"
                             />
                           </div>
                         ) : (
                           <div
                             className={`group flex items-center gap-1 rounded-lg transition-colors ${
                               isActive
-                                ? "bg-[#E7F5EC] border border-[#128C4A]/30"
-                                : "border border-transparent hover:bg-[#F8F7F2]"
+                                ? "bg-accent border border-primary/30"
+                                : "border border-transparent hover:bg-background"
                             }`}
                           >
                             <button
                               type="button"
                               onClick={() => handleSelect(conversation.id)}
-                              className="flex flex-col items-start flex-1 min-w-0 px-3 py-2 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#128C4A] rounded-lg"
+                              className="flex flex-col items-start flex-1 min-w-0 px-3 py-2 text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary rounded-lg"
                               aria-current={isActive ? "true" : undefined}
                             >
                               <span
                                 className={`block w-full truncate text-sm ${
                                   isActive
-                                    ? "font-semibold text-[#075E36]"
-                                    : "font-medium text-[#17251D]"
+                                    ? "font-semibold text-accent-foreground"
+                                    : "font-medium text-foreground"
                                 }`}
                               >
                                 {conversation.title}
                               </span>
-                              <span className="block mt-0.5 text-[11px] text-[#66736A]">
+                              <span className="block mt-0.5 text-[11px] text-muted-foreground">
                                 {now
                                   ? formatConversationTime(
                                       conversation.updatedAt,
@@ -283,7 +283,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                                     : conversation.id
                                 );
                               }}
-                              className={`p-1.5 mr-1.5 rounded-lg text-[#66736A] hover:text-[#17251D] hover:bg-[#FFFFFF] transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#128C4A] ${
+                              className={`p-1.5 mr-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary ${
                                 openMenuId === conversation.id
                                   ? "opacity-100"
                                   : "opacity-0 group-hover:opacity-100 focus:opacity-100"
@@ -310,16 +310,16 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                             role="menu"
                             aria-label={`Options for ${conversation.title}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="absolute right-2 top-full z-50 mt-1 w-36 py-1 bg-[#FFFFFF] border border-[#E0E7E1] rounded-lg shadow-md"
+                            className="absolute right-2 top-full z-50 mt-1 w-36 py-1 bg-surface border border-border rounded-lg shadow-md"
                           >
                             <button
                               type="button"
                               role="menuitem"
                               onClick={() => startRename(conversation)}
-                              className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[#17251D] hover:bg-[#F8F7F2] transition-colors cursor-pointer focus:outline-none focus:bg-[#F8F7F2]"
+                              className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-foreground hover:bg-background transition-colors cursor-pointer focus:outline-none focus:bg-background"
                             >
                               <svg
-                                className="w-4 h-4 text-[#66736A]"
+                                className="w-4 h-4 text-muted-foreground"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -338,7 +338,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                               type="button"
                               role="menuitem"
                               onClick={() => handleDelete(conversation.id)}
-                              className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[#B42318] hover:bg-[#FEF3F2] transition-colors cursor-pointer focus:outline-none focus:bg-[#FEF3F2]"
+                              className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-danger hover:bg-danger-subtle transition-colors cursor-pointer focus:outline-none focus:bg-danger-subtle"
                             >
                               <svg
                                 className="w-4 h-4"

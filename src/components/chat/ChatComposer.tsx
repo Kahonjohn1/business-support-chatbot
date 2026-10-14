@@ -55,7 +55,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   const isSendDisabled = disabled || (!hasText && !hasAttachments);
 
   return (
-    <footer className="p-3 sm:p-4 bg-[#FFFFFF] border-t border-[#E0E7E1] shrink-0">
+    <footer className="p-3 sm:p-4 bg-surface border-t border-border shrink-0">
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -85,7 +85,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
         {attachmentError && (
           <p
             role="alert"
-            className="flex items-start gap-1.5 px-1 text-[11px] text-[#B42318]"
+            className="flex items-start gap-1.5 px-1 text-[11px] text-danger"
           >
             <svg
               className="w-3.5 h-3.5 mt-0.5 shrink-0"
@@ -105,7 +105,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           </p>
         )}
 
-        <div className="relative flex items-end gap-2 p-2.5 sm:p-3 bg-[#F8F7F2] border border-[#E0E7E1] rounded-2xl transition-all focus-within:border-[#128C4A] focus-within:ring-2 focus-within:ring-[#128C4A]/20">
+        <div className="relative flex items-end gap-2 p-2.5 sm:p-3 bg-background border border-border rounded-2xl transition-all focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
           <input
             ref={fileInputRef}
             type="file"
@@ -123,8 +123,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             disabled={disabled}
             className={`inline-flex items-center justify-center p-2.5 rounded-xl transition-colors shrink-0 focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:ring-offset-1 ${
               disabled
-                ? "text-[#66736A] opacity-60 cursor-not-allowed"
-                : "text-[#66736A] hover:text-[#17251D] hover:bg-[#E0E7E1] cursor-pointer"
+                ? "text-muted-foreground opacity-60 cursor-not-allowed"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
             }`}
             aria-label="Attach files"
             title="Attach files"
@@ -153,7 +153,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             disabled={disabled}
-            className="flex-1 bg-transparent border-0 resize-none text-sm text-[#17251D] placeholder:text-[#66736A] focus:outline-none min-h-[44px] max-h-36 leading-relaxed"
+            className="flex-1 bg-transparent border-0 resize-none text-sm text-foreground placeholder:text-muted-foreground focus:outline-none min-h-[44px] max-h-36 leading-relaxed"
             aria-label="Write a message for your business"
           />
 
@@ -162,8 +162,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             disabled={isSendDisabled}
             className={`inline-flex items-center justify-center p-2.5 rounded-xl font-medium transition-colors shrink-0 focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:ring-offset-1 ${
               isSendDisabled
-                ? "bg-[#E0E7E1] text-[#66736A] cursor-not-allowed opacity-70"
-                : "bg-[#128C4A] hover:bg-[#075E36] active:bg-[#075E36] text-[#FFFFFF] shadow-xs cursor-pointer"
+                ? "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
+                : "bg-primary hover:bg-primary-hover active:bg-primary-hover text-primary-foreground shadow-xs cursor-pointer"
             }`}
             aria-label="Send message"
             title="Send message"
@@ -185,7 +185,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center justify-between gap-2 px-1 text-[11px] text-[#66736A]">
+        <div className="flex items-center justify-between gap-2 px-1 text-[11px] text-muted-foreground">
           <span>Press Enter to send, Shift + Enter for new line</span>
           {value.length > 0 && (
             <span aria-live="polite">{value.length} characters</span>

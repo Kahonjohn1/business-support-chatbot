@@ -25,7 +25,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   if (messages.length === 0) {
     return (
-      <div className="flex-1 overflow-y-auto flex flex-col justify-center bg-[#F8F7F2]">
+      <div className="flex-1 overflow-y-auto flex flex-col justify-center bg-background">
         {onSelectPrompt && <EmptyState onSelectPrompt={onSelectPrompt} />}
       </div>
     );
@@ -36,7 +36,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       role="log"
       aria-label="Conversation history"
       aria-live="polite"
-      className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-6 bg-[#F8F7F2] space-y-1"
+      className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-6 bg-background space-y-1"
     >
       {messages.map((message) => (
         <MessageBubble key={message.id} message={message} />

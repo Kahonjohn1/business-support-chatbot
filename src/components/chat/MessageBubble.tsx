@@ -26,8 +26,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
       }`}
     >
       {/* Bubble Metadata */}
-      <div className="flex items-center gap-1.5 mb-1 px-1 text-[11px] text-[#66736A]">
-        <span className="font-medium text-[#17251D]">
+      <div className="flex items-center gap-1.5 mb-1 px-1 text-[11px] text-muted-foreground">
+        <span className="font-medium text-foreground">
           {isUser ? "You" : "Business Support"}
         </span>
         {formattedTime && (
@@ -42,8 +42,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
       <div
         className={`relative max-w-[85%] sm:max-w-[75%] md:max-w-[70%] px-4 sm:px-4.5 py-3 rounded-2xl text-sm leading-relaxed shadow-xs ${
           isUser
-            ? "bg-[#128C4A] text-[#FFFFFF] rounded-tr-xs"
-            : "bg-[#FFFFFF] text-[#17251D] border border-[#E0E7E1] rounded-tl-xs"
+            ? "bg-primary text-primary-foreground rounded-tr-xs"
+            : "bg-surface text-foreground border border-border rounded-tl-xs"
         }`}
       >
         <p className="whitespace-pre-wrap break-words">{message.content}</p>

@@ -238,7 +238,7 @@ export const BusinessSupportChat: React.FC = () => {
   return (
     <section
       aria-label="Business Support Chatbot"
-      className="relative flex w-full max-w-6xl h-[680px] sm:h-[740px] md:h-[800px] max-h-[90vh] bg-[#FFFFFF] border border-[#E0E7E1] rounded-2xl overflow-hidden shadow-xs"
+      className="relative flex w-full max-w-6xl h-[680px] sm:h-[740px] md:h-[800px] max-h-[90vh] bg-surface border border-border rounded-2xl overflow-hidden shadow-xs"
     >
       {isSidebarOpen && (
         <div
@@ -259,7 +259,7 @@ export const BusinessSupportChat: React.FC = () => {
         onDeleteConversation={handleDeleteConversation}
       />
 
-      <div className="flex flex-col flex-1 min-w-0 bg-[#FFFFFF]">
+      <div className="flex flex-col flex-1 min-w-0 bg-surface">
         <ChatHeader
           onNewConversation={handleNewConversation}
           onOpenSidebar={() => setIsSidebarOpen(true)}
@@ -271,7 +271,7 @@ export const BusinessSupportChat: React.FC = () => {
           onRetry={handleRetryDemo}
         />
 
-        <main className="flex-1 flex flex-col min-h-0 relative bg-[#F8F7F2]">
+        <main className="flex-1 flex flex-col min-h-0 relative bg-background">
           <MessageList
             messages={messages}
             onSelectPrompt={handleSelectPrompt}

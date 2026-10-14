@@ -16,11 +16,11 @@ export const ErrorBanner: React.FC<ErrorBannerProps> = ({
   return (
     <div
       role="alert"
-      className="flex items-center justify-between gap-3 px-4 py-2.5 bg-[#F8F7F2] border-b border-[#E0E7E1] text-[#17251D] text-xs"
+      className="flex items-center justify-between gap-3 px-4 py-2.5 bg-background border-b border-border text-foreground text-xs"
     >
       <div className="flex items-center gap-2 min-w-0">
         <svg
-          className="w-4 h-4 text-[#128C4A] shrink-0"
+          className="w-4 h-4 text-primary shrink-0"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -41,7 +41,7 @@ export const ErrorBanner: React.FC<ErrorBannerProps> = ({
           <button
             type="button"
             onClick={onRetry}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border bg-[#FFFFFF] hover:bg-[#E7F5EC] active:bg-[#E0E7E1] text-[#075E36] border-[#128C4A]/40 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-[#128C4A] focus:ring-offset-1"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border bg-surface hover:bg-accent active:bg-muted text-accent-foreground border-primary/40 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
             aria-label="Retry demo"
             title="Retry demo"
           >
@@ -66,7 +66,7 @@ export const ErrorBanner: React.FC<ErrorBannerProps> = ({
         <button
           type="button"
           onClick={onDismiss}
-          className="p-1 text-[#66736A] hover:text-[#17251D] rounded transition-colors focus:outline-none focus:ring-1 focus:ring-[#128C4A]"
+          className="p-1 text-muted-foreground hover:text-foreground rounded transition-colors focus:outline-none focus:ring-1 focus:ring-primary"
           aria-label="Dismiss error banner"
         >
           <svg

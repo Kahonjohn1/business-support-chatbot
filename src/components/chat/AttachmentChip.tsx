@@ -16,8 +16,8 @@ function getBadgeLabel(attachment: Attachment): string {
 }
 
 const ACCENT_BY_KIND: Record<Attachment["kind"], string> = {
-  image: "text-[#128C4A]",
-  document: "text-[#66736A]",
+  image: "text-primary",
+  document: "text-muted-foreground",
 };
 
 export const AttachmentChip: React.FC<AttachmentChipProps> = ({
@@ -28,17 +28,17 @@ export const AttachmentChip: React.FC<AttachmentChipProps> = ({
     attachment.kind === "image" && Boolean(attachment.previewUrl);
 
   return (
-    <div className="flex items-center gap-2 max-w-[230px] px-2 py-1.5 bg-[#FFFFFF] border border-[#E0E7E1] rounded-xl shadow-xs">
+    <div className="flex items-center gap-2 max-w-[230px] px-2 py-1.5 bg-surface border border-border rounded-xl shadow-xs">
       {hasThumbnail ? (
         <div
           role="img"
           aria-label={attachment.name}
-          className="w-9 h-9 rounded-lg bg-[#F8F7F2] bg-cover bg-center border border-[#E0E7E1] shrink-0"
+          className="w-9 h-9 rounded-lg bg-background bg-cover bg-center border border-border shrink-0"
           style={{ backgroundImage: `url(${attachment.previewUrl})` }}
         />
       ) : (
         <div
-          className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#F8F7F2] border border-[#E0E7E1] shrink-0"
+          className="flex items-center justify-center w-9 h-9 rounded-lg bg-background border border-border shrink-0"
           aria-hidden="true"
         >
           <svg
@@ -67,16 +67,16 @@ export const AttachmentChip: React.FC<AttachmentChipProps> = ({
 
       <div className="flex flex-col min-w-0">
         <span
-          className="text-xs font-medium text-[#17251D] truncate"
+          className="text-xs font-medium text-foreground truncate"
           title={attachment.name}
         >
           {attachment.name}
         </span>
-        <span className="text-[10px] text-[#66736A]">
+        <span className="text-[10px] text-muted-foreground">
           {getBadgeLabel(attachment)} &middot; {formatFileSize(attachment.size)}
         </span>
         {!attachment.contentAvailable && (
-          <span className="text-[10px] italic text-[#B54708]">
+          <span className="text-[10px] italic text-warning">
             Content not saved
           </span>
         )}
@@ -86,7 +86,7 @@ export const AttachmentChip: React.FC<AttachmentChipProps> = ({
         <button
           type="button"
           onClick={() => onRemove(attachment.id)}
-          className="p-1 ml-0.5 rounded-lg text-[#66736A] hover:text-[#B42318] hover:bg-[#FEF3F2] transition-colors shrink-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#128C4A]"
+          className="p-1 ml-0.5 rounded-lg text-muted-foreground hover:text-danger hover:bg-danger-subtle transition-colors shrink-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary"
           aria-label={`Remove ${attachment.name}`}
           title={`Remove ${attachment.name}`}
         >
