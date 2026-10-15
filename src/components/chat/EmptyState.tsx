@@ -7,20 +7,20 @@ interface EmptyStateProps {
 
 const PROMPT_SUGGESTIONS: PromptSuggestion[] = [
   {
-    id: "draft-email",
-    text: "Draft a professional email",
+    id: "website-not-loading",
+    text: "My website isn't loading.",
   },
   {
-    id: "improve-message",
-    text: "Improve a business message",
+    id: "ai-images",
+    text: "Which AI tool can help me create images?",
   },
   {
-    id: "summarize-notes",
-    text: "Summarize meeting notes",
+    id: "marque-contact-card",
+    text: "How do I use my Marque Contact card?",
   },
   {
-    id: "action-items",
-    text: "Organize ideas into action items",
+    id: "technical-issue",
+    text: "I need help with a technical issue.",
   },
 ];
 
@@ -47,13 +47,13 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onSelectPrompt }) => {
 
       {/* Heading & Supporting Text */}
       <h2 className="text-xl sm:text-2xl font-semibold text-foreground tracking-tight">
-        How can we help your business today?
+        How can we help you today?
       </h2>
       <p className="text-sm text-muted-foreground mt-2 max-w-md leading-relaxed">
-        Draft communications, refine your writing, and organize your ideas in one place.
+        Get help with Marque Contact, AI tools, and technology issues.
       </p>
 
-      {/* 4 Clickable Prompt Suggestions */}
+      {/* Clickable Prompt Suggestions */}
       <div className="w-full mt-7">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {PROMPT_SUGGESTIONS.map((item) => (

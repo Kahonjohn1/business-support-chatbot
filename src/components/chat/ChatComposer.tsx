@@ -21,7 +21,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   onChange,
   onSend,
   disabled = false,
-  placeholder = "Write a message for your business...",
+  placeholder = "Describe your issue or ask a question...",
   attachments = [],
   attachmentError,
   onFilesSelected,
@@ -156,7 +156,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             placeholder={placeholder}
             disabled={disabled}
             className="flex-1 bg-transparent border-0 resize-none text-sm text-foreground placeholder:text-muted-foreground focus:outline-none min-h-[44px] max-h-36 leading-relaxed"
-            aria-label="Write a message for your business"
+            aria-label="Write your message"
           />
 
           <button

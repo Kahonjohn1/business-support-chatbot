@@ -1,18 +1,13 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { ApiChatMessage, Attachment, ChatMessage } from "@/types/chat";
 import { ChatHeader } from "./ChatHeader";
 import { MessageList } from "./MessageList";
 import { ChatComposer } from "./ChatComposer";
 import { ErrorBanner } from "./ErrorBanner";
-import { ConversationSidebar } from "./ConversationSidebar";
-import { useConversations } from "@/hooks/useConversations";
-import { useIsHydrated } from "@/hooks/useIsHydrated";
-import {
-  createMessageId,
-  deriveConversationTitle,
-} from "@/lib/conversations";
+import { useChatMessages } from "@/hooks/useChatMessages";
+import { createMessageId } from "@/lib/chatMessages";
 import { MAX_ATTACHMENTS } from "@/lib/chatLimits";
 import { buildRequestContext } from "@/lib/requestContext";
 import {
@@ -46,30 +41,19 @@ function isRetryableStatus(status: number): boolean {
 }
 
 export const BusinessSupportChat: React.FC = () => {
-  const {
-    conversations,
-    activeConversationId,
-    appendMessage,
-    renameConversation,
-    removeConversation,
-    selectConversation,
-  } = useConversations();
-
-  // False until the client has hydrated. The restored conversation lives in
-  // localStorage, so the server renders an empty list; gating the empty state
-  // on this flag avoids flashing it before the conversation appears.
-  const isHydrated = useIsHydrated();
+  // The conversation lives in memory only; nothing is persisted, so a refresh
+  // always starts a new, empty chat.
+  const { messages, appendMessage, clearConversation } = useChatMessages();
 
   const [input, setInput] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isAnalyzingFiles, setIsAnalyzingFiles] = useState<boolean>(false);
   const [isRetryableError, setIsRetryableError] = useState<boolean>(true);
 
-  // Guard to ensure an async reply cannot land in a reset or switched conversation
+  // Guard to ensure an async reply cannot land in a conversation that was reset.
   const conversationSessionRef = useRef<number>(0);
 
   // Handle for the in-flight request so it can be aborted safely
@@ -91,19 +75,9 @@ export const BusinessSupportChat: React.FC = () => {
     };
   }, []);
 
-  const activeConversation = useMemo(
-    () =>
-      conversations.find(
-        (conversation) => conversation.id === activeConversationId
-      ) ?? null,
-    [conversations, activeConversationId]
-  );
-
-  const messages = activeConversation?.messages ?? [];
-
   // Sends the conversation context to the API and appends the assistant's reply.
   const requestAssistantReply = useCallback(
-    async (conversationId: string, context: ApiChatMessage[]) => {
+    async (context: ApiChatMessage[]) => {
       const session = conversationSessionRef.current;
 
       // Cancel any request that may still be running.
@@ -122,10 +96,7 @@ export const BusinessSupportChat: React.FC = () => {
 
       try {
         const formData = new FormData();
-        formData.append(
-          "payload",
-          JSON.stringify({ conversationId, messages: context })
-        );
+        formData.append("payload", JSON.stringify({ messages: context }));
         for (const message of context) {
           for (const id of message.attachmentIds ?? []) {
             const file = attachmentFileCacheRef.current.get(id);
@@ -167,7 +138,7 @@ export const BusinessSupportChat: React.FC = () => {
         }
 
         // Ignore the result if the request was aborted or the conversation was
-        // reset or switched meanwhile.
+        // reset meanwhile.
         if (
           isStaleResponse({
             aborted: controller.signal.aborted,
@@ -184,14 +155,14 @@ export const BusinessSupportChat: React.FC = () => {
           content,
           createdAt: new Date().toISOString(),
         };
-        appendMessage(conversationId, assistantMessage, "");
+        appendMessage(assistantMessage);
 
         requestControllerRef.current = null;
         submissionLockRef.current = false;
         setIsLoading(false);
         setIsAnalyzingFiles(false);
       } catch (err) {
-        // A cancelled request (reset, switch, unmount) must not surface an error.
+        // A cancelled request (reset, unmount) must not surface an error.
         if (
           isStaleResponse({
             aborted: controller.signal.aborted,
@@ -233,7 +204,7 @@ export const BusinessSupportChat: React.FC = () => {
 
   // Release the object URLs of any pending composer attachments and reset them.
   // Only these pending files are dropped from the shared cache; files belonging
-  // to messages in other conversations must remain available for retries.
+  // to messages already sent must remain available for retries.
   const clearComposerAttachments = () => {
     attachments.forEach(revokeAttachmentPreview);
     releaseAttachmentFiles(attachments, attachmentFileCacheRef.current);
@@ -341,15 +312,8 @@ export const BusinessSupportChat: React.FC = () => {
       ...(hasAttachments ? { attachments } : {}),
     };
 
-    // 6. Append to the active conversation, or start a new one titled from the message.
-    const conversationId = appendMessage(
-      activeConversationId,
-      userMessage,
-      deriveConversationTitle(trimmed || attachments[0]?.name || "")
-    );
-    if (conversationId !== activeConversationId) {
-      selectConversation(conversationId);
-    }
+    // 6. Append to the in-memory conversation.
+    appendMessage(userMessage);
 
     // 7. Clear the composer only after the message has been accepted. The attachments
     //    are now part of the message, so their object URLs must not be revoked here.
@@ -362,19 +326,19 @@ export const BusinessSupportChat: React.FC = () => {
       [...messages, userMessage],
       attachmentFileCacheRef.current
     );
-    void requestAssistantReply(conversationId, context);
+    void requestAssistantReply(context);
   };
 
   const handleRetry = useCallback(() => {
     // Do not allow overlapping retries while a request is in progress.
-    if (submissionLockRef.current || isLoading || !activeConversation) {
+    if (submissionLockRef.current || isLoading || messages.length === 0) {
       return;
     }
 
     // Re-send the existing history (including the failed user message) without
     // appending a duplicate user message.
     const context = buildRequestContext(
-      activeConversation.messages,
+      messages,
       attachmentFileCacheRef.current
     );
     const lastMessage = context[context.length - 1];
@@ -387,8 +351,8 @@ export const BusinessSupportChat: React.FC = () => {
     }
 
     submissionLockRef.current = true;
-    void requestAssistantReply(activeConversation.id, context);
-  }, [isLoading, activeConversation, requestAssistantReply]);
+    void requestAssistantReply(context);
+  }, [isLoading, messages, requestAssistantReply]);
 
   const handleSelectPrompt = (promptText: string) => {
     // Places suggestion text into the message composer without auto-submitting
@@ -397,101 +361,45 @@ export const BusinessSupportChat: React.FC = () => {
   };
 
   const handleNewConversation = () => {
-    // Existing conversations are preserved; only the active view is cleared.
+    // The conversation is in memory only, so starting a new chat discards it.
     resetTransientState();
     clearComposerAttachments();
-    selectConversation(null);
+    clearConversation();
     setInput("");
-  };
-
-  const handleSelectConversation = (id: string) => {
-    // Switching conversations cancels any pending demonstration to avoid carrying state over.
-    resetTransientState();
-    clearComposerAttachments();
-    selectConversation(id);
-    setInput("");
-  };
-
-  const handleRenameConversation = (id: string, title: string) => {
-    renameConversation(id, title);
-  };
-
-  const handleDeleteConversation = (id: string) => {
-    const target = conversations.find((conversation) => conversation.id === id);
-    target?.messages.forEach((message) =>
-      message.attachments?.forEach((attachment) => {
-        revokeAttachmentPreview(attachment);
-        attachmentFileCacheRef.current.delete(attachment.id);
-      })
-    );
-
-    removeConversation(id);
-
-    if (activeConversationId === id) {
-      resetTransientState();
-      clearComposerAttachments();
-      selectConversation(null);
-      setInput("");
-    }
   };
 
   return (
     <section
-      aria-label="Business Support Chatbot"
-      className="relative flex w-full max-w-6xl h-[680px] sm:h-[740px] md:h-[800px] max-h-[90vh] bg-surface border border-border rounded-2xl overflow-hidden shadow-xs"
+      aria-label="Marque Technologies Support chat"
+      className="relative flex flex-col w-full max-w-6xl h-[680px] sm:h-[740px] md:h-[800px] max-h-[90vh] bg-surface border border-border rounded-2xl overflow-hidden shadow-xs"
     >
-      {isSidebarOpen && (
-        <div
-          className="absolute inset-0 z-30 bg-[#17251D]/30 lg:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-          aria-hidden="true"
-        />
-      )}
+      <ChatHeader onNewConversation={handleNewConversation} />
 
-      <ConversationSidebar
-        conversations={conversations}
-        activeConversationId={activeConversationId}
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-        onNewConversation={handleNewConversation}
-        onSelectConversation={handleSelectConversation}
-        onRenameConversation={handleRenameConversation}
-        onDeleteConversation={handleDeleteConversation}
+      <ErrorBanner
+        message={error}
+        onDismiss={() => setError(null)}
+        onRetry={isRetryableError ? handleRetry : undefined}
       />
 
-      <div className="flex flex-col flex-1 min-w-0 bg-surface">
-        <ChatHeader
-          onNewConversation={handleNewConversation}
-          onOpenSidebar={() => setIsSidebarOpen(true)}
+      <main className="flex-1 flex flex-col min-h-0 relative bg-background">
+        <MessageList
+          messages={messages}
+          onSelectPrompt={handleSelectPrompt}
+          isLoading={isLoading}
+          loadingLabel={isAnalyzingFiles ? "Analyzing files..." : undefined}
         />
+      </main>
 
-        <ErrorBanner
-          message={error}
-          onDismiss={() => setError(null)}
-          onRetry={isRetryableError ? handleRetry : undefined}
-        />
-
-        <main className="flex-1 flex flex-col min-h-0 relative bg-background">
-          <MessageList
-            messages={messages}
-            onSelectPrompt={handleSelectPrompt}
-            isLoading={isLoading}
-            loadingLabel={isAnalyzingFiles ? "Analyzing files..." : undefined}
-            isHydrated={isHydrated}
-          />
-        </main>
-
-        <ChatComposer
-          value={input}
-          onChange={setInput}
-          onSend={handleSendMessage}
-          disabled={isLoading}
-          attachments={attachments}
-          attachmentError={attachmentError}
-          onFilesSelected={handleFilesSelected}
-          onRemoveAttachment={handleRemoveAttachment}
-        />
-      </div>
+      <ChatComposer
+        value={input}
+        onChange={setInput}
+        onSend={handleSendMessage}
+        disabled={isLoading}
+        attachments={attachments}
+        attachmentError={attachmentError}
+        onFilesSelected={handleFilesSelected}
+        onRemoveAttachment={handleRemoveAttachment}
+      />
     </section>
   );
 };

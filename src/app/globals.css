@@ -12,10 +12,10 @@
   --muted: #E3EAE7;
   --muted-foreground: #66736A;
   --border: #E1E8E5;
-  --accent: #E8F7EF;
-  --accent-foreground: #075E46;
-  --primary: #128C5A;
-  --primary-hover: #075E46;
+  --accent: #E4F7F9;
+  --accent-foreground: #0B5E68;
+  --primary: #0F8591;
+  --primary-hover: #0B5E68;
   --primary-foreground: #FFFFFF;
   --danger: #B42318;
   --danger-subtle: #FEF3F2;
@@ -23,10 +23,10 @@
   --switch-thumb: #FFFFFF;
 
   /* Brand palette */
-  --brand-green: #075E46;
-  --action-green: #128C5A;
-  --accent-green: #25D366;
-  --selected-green: #E8F7EF;
+  --brand-teal: #0B5E68;
+  --action-teal: #0F8591;
+  --accent-teal: #25BBC8;
+  --selected-teal: #E4F7F9;
   --cool-gray: #F4F7F6;
   --main-text: #17251D;
   --secondary-text: #66736A;
@@ -44,10 +44,10 @@
   --muted: #232B28;
   --muted-foreground: #9BA8A0;
   --border: #2A3330;
-  --accent: #17281F;
-  --accent-foreground: #86DCAB;
-  --primary: #0E8552;
-  --primary-hover: #0C7246;
+  --accent: #102A2E;
+  --accent-foreground: #7FD9E2;
+  --primary: #17A2B1;
+  --primary-hover: #0F8591;
   --primary-foreground: #FFFFFF;
   --danger: #F97066;
   --danger-subtle: #3A1E1C;
@@ -56,10 +56,10 @@
 }
 
 @theme {
-  --color-brand-green: #075E46;
-  --color-action-green: #128C5A;
-  --color-accent-green: #25D366;
-  --color-selected-green: #E8F7EF;
+  --color-brand-teal: #0B5E68;
+  --color-action-teal: #0F8591;
+  --color-accent-teal: #25BBC8;
+  --color-selected-teal: #E4F7F9;
   --color-cool-gray: #F4F7F6;
   --color-main-text: #17251D;
   --color-secondary-text: #66736A;

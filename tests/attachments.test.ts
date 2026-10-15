@@ -41,10 +41,10 @@ test("releaseAttachmentFiles removes only the given ids", () => {
   assert.equal(cache.has("sent"), true, "unrelated file is preserved");
 });
 
-test("releasing composer files keeps other conversations' attachments resolvable", () => {
+test("releasing composer files keeps already-sent attachments resolvable", () => {
   const cache = new Map<string, File>([
     ["composer", file("c.txt")],
-    ["other-conversation", file("o.txt")],
+    ["sent-message", file("o.txt")],
   ]);
 
   releaseAttachmentFiles([attachment("composer")], cache);
@@ -54,15 +54,15 @@ test("releasing composer files keeps other conversations' attachments resolvable
     role: "user",
     content: "here is the file",
     createdAt: new Date().toISOString(),
-    attachments: [attachment("other-conversation")],
+    attachments: [attachment("sent-message")],
   };
 
   const context = buildRequestContext([message], cache);
 
   assert.deepEqual(
     context[0].attachmentIds,
-    ["other-conversation"],
-    "file bytes for another conversation survive a composer reset"
+    ["sent-message"],
+    "file bytes for an already-sent message survive a composer reset"
   );
 });
 

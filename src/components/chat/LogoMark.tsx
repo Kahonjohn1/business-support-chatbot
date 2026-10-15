@@ -6,7 +6,7 @@ interface LogoMarkProps {
 
 /**
  * Marque Support brand mark: an original rounded-square app tile in the brand
- * greens, holding a white speech bubble with a white letter "M" inside. The
+ * turquoise, holding a white speech bubble with a white letter "M" inside. The
  * silhouette is inspired by modern messaging app tiles, but the bubble, tail
  * and letterform are drawn from scratch for this product and stay legible at
  * small sizes.
@@ -27,8 +27,8 @@ export const LogoMark: React.FC<LogoMarkProps> = ({ className }) => (
         y2="40"
         gradientUnits="userSpaceOnUse"
       >
-        <stop offset="0%" stopColor="#128C5A" />
-        <stop offset="100%" stopColor="#075E46" />
+        <stop offset="0%" stopColor="#25BBC8" />
+        <stop offset="100%" stopColor="#0F8591" />
       </linearGradient>
     </defs>
 
