@@ -1,10 +1,14 @@
 import type { Attachment, AttachmentKind } from "@/types/chat";
-import { MAX_FILE_BYTES } from "@/lib/chatLimits";
+import { MAX_FILE_BYTES, MAX_TOTAL_FILE_BYTES } from "@/lib/chatLimits";
 
 // File bytes are held in memory for the active session and forwarded to the
 // server for processing; only metadata is ever persisted.
 
 export const MAX_ATTACHMENT_BYTES = MAX_FILE_BYTES; // 10 MB per file
+
+// Mirrors the server's MAX_TOTAL_FILE_BYTES so the client can refuse an
+// over-limit selection before it becomes a 413 that loses the composed message.
+export const MAX_TOTAL_ATTACHMENT_BYTES = MAX_TOTAL_FILE_BYTES; // 25 MB across all files
 
 const EXTENSION_MIME_MAP: Record<string, string> = {
   pdf: "application/pdf",
@@ -42,6 +46,34 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function totalAttachmentBytes(
+  attachments: readonly Attachment[]
+): number {
+  return attachments.reduce(
+    (total, attachment) => total + attachment.size,
+    0
+  );
+}
+
+/**
+ * Returns a user-facing error when the combined size of the given attachments
+ * exceeds the server's per-request file limit, or null when they fit. Sharing
+ * this check keeps the client (selection and send time) aligned with the server.
+ */
+export function totalAttachmentSizeError(
+  attachments: readonly Attachment[]
+): string | null {
+  const total = totalAttachmentBytes(attachments);
+  if (total <= MAX_TOTAL_ATTACHMENT_BYTES) {
+    return null;
+  }
+  return `Your attachments add up to ${formatFileSize(
+    total
+  )}, which exceeds the ${formatFileSize(
+    MAX_TOTAL_ATTACHMENT_BYTES
+  )} limit for a single message. Remove a file or start a new chat.`;
 }
 
 export function validateAttachmentFile(file: File): string | null {

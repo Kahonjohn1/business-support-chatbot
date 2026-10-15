@@ -8,15 +8,20 @@ import { ChatComposer } from "./ChatComposer";
 import { ErrorBanner } from "./ErrorBanner";
 import { ConversationSidebar } from "./ConversationSidebar";
 import { useConversations } from "@/hooks/useConversations";
-import { createMessageId, deriveConversationTitle } from "@/lib/conversations";
-import { MAX_ATTACHMENTS, MAX_MESSAGE_CHARS } from "@/lib/chatLimits";
+import {
+  createMessageId,
+  deriveConversationTitle,
+} from "@/lib/conversations";
+import { MAX_ATTACHMENTS } from "@/lib/chatLimits";
 import { buildRequestContext } from "@/lib/requestContext";
 import {
   createAttachmentFromFile,
   releaseAttachmentFiles,
   revokeAttachmentPreview,
+  totalAttachmentSizeError,
   validateAttachmentFile,
 } from "@/lib/attachments";
+import { evaluateSubmission, isStaleResponse } from "@/lib/submission";
 
 const GENERIC_REQUEST_ERROR =
   "Something went wrong. Please try again.";
@@ -42,14 +47,13 @@ function isRetryableStatus(status: number): boolean {
 export const BusinessSupportChat: React.FC = () => {
   const {
     conversations,
+    activeConversationId,
     appendMessage,
     renameConversation,
     removeConversation,
+    selectConversation,
   } = useConversations();
 
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(
-    null
-  );
   const [input, setInput] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +68,10 @@ export const BusinessSupportChat: React.FC = () => {
 
   // Handle for the in-flight request so it can be aborted safely
   const requestControllerRef = useRef<AbortController | null>(null);
+
+  // Synchronous guard set the moment a submission is accepted, so a second
+  // send/retry cannot start before React has rendered the disabled state.
+  const submissionLockRef = useRef<boolean>(false);
 
   // Real File objects for attachments created this session, keyed by attachment
   // id. Never persisted; used to (re)send the file bytes with each request.
@@ -152,8 +160,15 @@ export const BusinessSupportChat: React.FC = () => {
           );
         }
 
-        // Ignore the result if the conversation was reset or switched meanwhile.
-        if (conversationSessionRef.current !== session) {
+        // Ignore the result if the request was aborted or the conversation was
+        // reset or switched meanwhile.
+        if (
+          isStaleResponse({
+            aborted: controller.signal.aborted,
+            startSession: session,
+            currentSession: conversationSessionRef.current,
+          })
+        ) {
           return;
         }
 
@@ -166,18 +181,23 @@ export const BusinessSupportChat: React.FC = () => {
         appendMessage(conversationId, assistantMessage, "");
 
         requestControllerRef.current = null;
+        submissionLockRef.current = false;
         setIsLoading(false);
         setIsAnalyzingFiles(false);
       } catch (err) {
         // A cancelled request (reset, switch, unmount) must not surface an error.
-        if (controller.signal.aborted) {
-          return;
-        }
-        if (conversationSessionRef.current !== session) {
+        if (
+          isStaleResponse({
+            aborted: controller.signal.aborted,
+            startSession: session,
+            currentSession: conversationSessionRef.current,
+          })
+        ) {
           return;
         }
 
         requestControllerRef.current = null;
+        submissionLockRef.current = false;
         setIsLoading(false);
         setIsAnalyzingFiles(false);
         setIsRetryableError(
@@ -198,6 +218,7 @@ export const BusinessSupportChat: React.FC = () => {
     conversationSessionRef.current += 1;
     requestControllerRef.current?.abort();
     requestControllerRef.current = null;
+    submissionLockRef.current = false;
     setIsLoading(false);
     setIsAnalyzingFiles(false);
     setIsRetryableError(true);
@@ -231,6 +252,7 @@ export const BusinessSupportChat: React.FC = () => {
     }
 
     const accepted: Attachment[] = [];
+    const acceptedFiles: File[] = [];
 
     for (const file of selected.slice(0, remaining)) {
       const validationError = validateAttachmentFile(file);
@@ -238,12 +260,20 @@ export const BusinessSupportChat: React.FC = () => {
         errors.push(validationError);
         continue;
       }
-      const attachment = createAttachmentFromFile(file);
-      attachmentFileCacheRef.current.set(attachment.id, file);
-      accepted.push(attachment);
+      accepted.push(createAttachmentFromFile(file));
+      acceptedFiles.push(file);
     }
 
-    if (accepted.length > 0) {
+    // Reject a batch that would push the message over the server's combined
+    // file limit, before any file bytes are registered or object URLs leak.
+    const sizeError = totalAttachmentSizeError([...attachments, ...accepted]);
+    if (sizeError) {
+      accepted.forEach(revokeAttachmentPreview);
+      errors.push(sizeError);
+    } else if (accepted.length > 0) {
+      accepted.forEach((attachment, index) => {
+        attachmentFileCacheRef.current.set(attachment.id, acceptedFiles[index]);
+      });
       setAttachments((prev) => [...prev, ...accepted]);
     }
     setAttachmentError(errors.length > 0 ? errors.join(" ") : null);
@@ -269,23 +299,33 @@ export const BusinessSupportChat: React.FC = () => {
       return;
     }
 
-    // 2b. Guard against an over-length message before it becomes an API call.
-    //     The composer's maxLength normally prevents this; this is a defensive
-    //     check so an invalid request is never sent.
-    if (trimmed.length > MAX_MESSAGE_CHARS) {
-      setIsRetryableError(false);
-      setError(
-        `Messages are limited to ${MAX_MESSAGE_CHARS} characters. Please shorten your message and try again.`
-      );
+    // 3. If a submission is already in progress, prevent another. The lock is
+    //    set synchronously so a rapid second send cannot slip through before
+    //    React re-renders the composer as disabled.
+    if (submissionLockRef.current || isLoading) {
       return;
     }
 
-    // 3. If a submission is already in progress, prevent another submission.
-    if (isLoading) {
+    // 4. Validate the submission and refuse an unanswered-turn follow-up. On
+    //    rejection the composer is left untouched so the user can recover.
+    const decision = evaluateSubmission({
+      messages,
+      text: trimmed,
+      attachments,
+    });
+    if (!decision.ok) {
+      if (decision.reason === "attachments-too-large") {
+        setAttachmentError(decision.message);
+        return;
+      }
+      setIsRetryableError(decision.reason === "awaiting-reply");
+      setError(decision.message);
       return;
     }
 
-    // 4. Create a user message containing a unique ID, role "user", trimmed content,
+    submissionLockRef.current = true;
+
+    // 5. Create a user message containing a unique ID, role "user", trimmed content,
     //    ISO timestamp, and any selected attachment metadata.
     const userMessage: ChatMessage = {
       id: createMessageId(),
@@ -295,23 +335,23 @@ export const BusinessSupportChat: React.FC = () => {
       ...(hasAttachments ? { attachments } : {}),
     };
 
-    // 5. Append to the active conversation, or start a new one titled from the message.
+    // 6. Append to the active conversation, or start a new one titled from the message.
     const conversationId = appendMessage(
       activeConversationId,
       userMessage,
       deriveConversationTitle(trimmed || attachments[0]?.name || "")
     );
     if (conversationId !== activeConversationId) {
-      setActiveConversationId(conversationId);
+      selectConversation(conversationId);
     }
 
-    // 6. Clear the composer only after the message has been accepted. The attachments
+    // 7. Clear the composer only after the message has been accepted. The attachments
     //    are now part of the message, so their object URLs must not be revoked here.
     setInput("");
     setAttachments([]);
     setAttachmentError(null);
 
-    // 7. Build the bounded request context and request the assistant's reply.
+    // 8. Build the bounded request context and request the assistant's reply.
     const context = buildRequestContext(
       [...messages, userMessage],
       attachmentFileCacheRef.current
@@ -321,7 +361,7 @@ export const BusinessSupportChat: React.FC = () => {
 
   const handleRetry = useCallback(() => {
     // Do not allow overlapping retries while a request is in progress.
-    if (isLoading || !activeConversation) {
+    if (submissionLockRef.current || isLoading || !activeConversation) {
       return;
     }
 
@@ -335,11 +375,12 @@ export const BusinessSupportChat: React.FC = () => {
     if (!lastMessage || lastMessage.role !== "user") {
       setIsRetryableError(false);
       setError(
-        "This message can no longer be sent because its files are unavailable. Please send it again."
+        "This message can no longer be sent because its files are unavailable. Start a new chat and send it again."
       );
       return;
     }
 
+    submissionLockRef.current = true;
     void requestAssistantReply(activeConversation.id, context);
   }, [isLoading, activeConversation, requestAssistantReply]);
 
@@ -353,7 +394,7 @@ export const BusinessSupportChat: React.FC = () => {
     // Existing conversations are preserved; only the active view is cleared.
     resetTransientState();
     clearComposerAttachments();
-    setActiveConversationId(null);
+    selectConversation(null);
     setInput("");
   };
 
@@ -361,7 +402,7 @@ export const BusinessSupportChat: React.FC = () => {
     // Switching conversations cancels any pending demonstration to avoid carrying state over.
     resetTransientState();
     clearComposerAttachments();
-    setActiveConversationId(id);
+    selectConversation(id);
     setInput("");
   };
 
@@ -383,7 +424,7 @@ export const BusinessSupportChat: React.FC = () => {
     if (activeConversationId === id) {
       resetTransientState();
       clearComposerAttachments();
-      setActiveConversationId(null);
+      selectConversation(null);
       setInput("");
     }
   };

@@ -4,8 +4,11 @@ import assert from "node:assert/strict";
 import {
   createAttachmentFromFile,
   releaseAttachmentFiles,
+  totalAttachmentBytes,
+  totalAttachmentSizeError,
   validateAttachmentFile,
   MAX_ATTACHMENT_BYTES,
+  MAX_TOTAL_ATTACHMENT_BYTES,
 } from "../src/lib/attachments.ts";
 import { buildRequestContext } from "../src/lib/requestContext.ts";
 import type { Attachment, ChatMessage } from "../src/types/chat.ts";
@@ -105,4 +108,39 @@ test("createAttachmentFromFile records document metadata and availability", () =
   assert.equal(created.type, "text/plain");
   assert.equal(created.size, 3);
   assert.equal(created.previewUrl, undefined);
+});
+
+test("totalAttachmentBytes sums the sizes of every attachment", () => {
+  assert.equal(totalAttachmentBytes([]), 0);
+  assert.equal(
+    totalAttachmentBytes([
+      attachment("a", { size: 100 }),
+      attachment("b", { size: 250 }),
+    ]),
+    350
+  );
+});
+
+test("totalAttachmentSizeError accepts attachments at or below the limit", () => {
+  assert.equal(totalAttachmentSizeError([]), null);
+  assert.equal(
+    totalAttachmentSizeError([
+      attachment("a", { size: MAX_TOTAL_ATTACHMENT_BYTES }),
+    ]),
+    null
+  );
+});
+
+test("totalAttachmentSizeError rejects combined attachments over the limit", () => {
+  const result = totalAttachmentSizeError([
+    attachment("a", { size: MAX_TOTAL_ATTACHMENT_BYTES - 1 }),
+    attachment("b", { size: 2 }),
+  ]);
+
+  assert.ok(result, "expected an error message");
+  assert.match(result ?? "", /limit for a single message/);
+});
+
+test("MAX_TOTAL_ATTACHMENT_BYTES mirrors the server's 25 MB total limit", () => {
+  assert.equal(MAX_TOTAL_ATTACHMENT_BYTES, 25 * 1024 * 1024);
 });

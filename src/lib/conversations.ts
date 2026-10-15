@@ -8,6 +8,11 @@ import type {
 } from "@/types/chat";
 
 const STORAGE_KEY = "business-support-chatbot:conversations";
+// Persists which conversation was open so a refresh can restore it. The empty
+// string is a deliberate sentinel meaning "the user chose a new chat"; a missing
+// key means nothing has been recorded yet.
+export const ACTIVE_CONVERSATION_STORAGE_KEY =
+  "business-support-chatbot:active-conversation";
 const MAX_TITLE_LENGTH = 48;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -190,6 +195,71 @@ export function saveConversations(conversations: Conversation[]): void {
   } catch {
     // Persistence is best-effort; the chat keeps working in memory.
   }
+}
+
+/**
+ * Reads the persisted active conversation id. Returns `null` when nothing has
+ * been stored and `""` when the user explicitly chose a new chat.
+ */
+export function loadActiveConversationId(): string | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    return window.localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persists the active conversation id. Passing `null` records an explicit new
+ * chat (the empty-string sentinel) so a refresh does not silently reopen an old
+ * conversation.
+ */
+export function saveActiveConversationId(id: string | null): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(ACTIVE_CONVERSATION_STORAGE_KEY, id ?? "");
+  } catch {
+    // Persistence is best-effort; the chat keeps working in memory.
+  }
+}
+
+function mostRecentlyUpdatedId(conversations: Conversation[]): string | null {
+  let latest: Conversation | undefined;
+  let latestTime = Number.NEGATIVE_INFINITY;
+
+  for (const conversation of conversations) {
+    const updated = new Date(conversation.updatedAt).getTime();
+    // An unparseable timestamp sorts first but never outranks a valid one.
+    if (!Number.isNaN(updated) && updated > latestTime) {
+      latest = conversation;
+      latestTime = updated;
+    }
+  }
+
+  return (latest ?? conversations[0])?.id ?? null;
+}
+
+/**
+ * Decides which conversation to open after a refresh:
+ * - an explicit new chat (`""`) stays empty;
+ * - a saved id that still exists is restored;
+ * - otherwise (nothing saved yet, or the id was deleted) the most recently
+ *   updated conversation is used, or `null` when history is empty.
+ */
+export function resolveActiveConversationId(
+  savedId: string | null,
+  conversations: Conversation[]
+): string | null {
+  if (savedId === "") return null;
+
+  if (savedId && conversations.some((conversation) => conversation.id === savedId)) {
+    return savedId;
+  }
+
+  return mostRecentlyUpdatedId(conversations);
 }
 
 function startOfDay(date: Date): number {
