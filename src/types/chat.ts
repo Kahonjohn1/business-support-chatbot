@@ -1,5 +1,13 @@
 export type MessageRole = "user" | "assistant";
 
+/** Minimal message shape exchanged with the chat API (no ids/timestamps). */
+export interface ApiChatMessage {
+  role: MessageRole;
+  content: string;
+  /** Ids of attachments whose file bytes are still available for this turn. */
+  attachmentIds?: string[];
+}
+
 export type AttachmentKind = "image" | "document";
 
 export interface Attachment {

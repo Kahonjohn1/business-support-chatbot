@@ -42,8 +42,8 @@ export const ErrorBanner: React.FC<ErrorBannerProps> = ({
             type="button"
             onClick={onRetry}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border bg-surface hover:bg-accent active:bg-muted text-accent-foreground border-primary/40 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
-            aria-label="Retry demo"
-            title="Retry demo"
+            aria-label="Retry"
+            title="Retry"
           >
             <svg
               className="w-3.5 h-3.5"
@@ -59,7 +59,7 @@ export const ErrorBanner: React.FC<ErrorBannerProps> = ({
                 d="M4 4v5h5M20 20v-5h-5M4.6 9A8 8 0 0119.4 15M19.4 15A8 8 0 014.6 9"
               />
             </svg>
-            <span>Retry demo</span>
+            <span>Retry</span>
           </button>
         )}
 

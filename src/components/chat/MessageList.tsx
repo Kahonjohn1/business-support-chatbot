@@ -8,12 +8,14 @@ interface MessageListProps {
   messages: ChatMessage[];
   onSelectPrompt?: (promptText: string) => void;
   isLoading?: boolean;
+  loadingLabel?: string;
 }
 
 export const MessageList: React.FC<MessageListProps> = ({
   messages,
   onSelectPrompt,
   isLoading = false,
+  loadingLabel,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -42,7 +44,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         <MessageBubble key={message.id} message={message} />
       ))}
 
-      {isLoading && <LoadingIndicator />}
+      {isLoading && <LoadingIndicator label={loadingLabel} />}
 
       <div ref={scrollRef} aria-hidden="true" />
     </div>

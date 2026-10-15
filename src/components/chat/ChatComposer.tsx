@@ -1,6 +1,7 @@
 import React, { useRef } from "react";
 import type { Attachment } from "@/types/chat";
 import { ACCEPTED_FILE_INPUT } from "@/lib/attachments";
+import { MAX_MESSAGE_CHARS } from "@/lib/chatLimits";
 import { AttachmentChip } from "./AttachmentChip";
 
 interface ChatComposerProps {
@@ -151,6 +152,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
+            maxLength={MAX_MESSAGE_CHARS}
             placeholder={placeholder}
             disabled={disabled}
             className="flex-1 bg-transparent border-0 resize-none text-sm text-foreground placeholder:text-muted-foreground focus:outline-none min-h-[44px] max-h-36 leading-relaxed"
@@ -188,7 +190,9 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
         <div className="flex items-center justify-between gap-2 px-1 text-[11px] text-muted-foreground">
           <span>Press Enter to send, Shift + Enter for new line</span>
           {value.length > 0 && (
-            <span aria-live="polite">{value.length} characters</span>
+            <span aria-live="polite">
+              {value.length} / {MAX_MESSAGE_CHARS} characters
+            </span>
           )}
         </div>
       </form>

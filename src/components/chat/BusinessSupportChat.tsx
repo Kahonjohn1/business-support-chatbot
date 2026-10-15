@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Attachment, ChatMessage } from "@/types/chat";
+import type { ApiChatMessage, Attachment, ChatMessage } from "@/types/chat";
 import { ChatHeader } from "./ChatHeader";
 import { MessageList } from "./MessageList";
 import { ChatComposer } from "./ChatComposer";
@@ -10,16 +10,72 @@ import { ConversationSidebar } from "./ConversationSidebar";
 import { useConversations } from "@/hooks/useConversations";
 import { createMessageId, deriveConversationTitle } from "@/lib/conversations";
 import {
+  MAX_ATTACHMENTS,
+  MAX_MESSAGE_CHARS,
+  MAX_MESSAGES,
+  MAX_TOTAL_CHARS,
+} from "@/lib/chatLimits";
+import {
   createAttachmentFromFile,
   revokeAttachmentPreview,
   validateAttachmentFile,
 } from "@/lib/attachments";
 
-// This is a frontend-only demonstration. No API, AI model, or backend is involved.
-// The loading period is a local timer and the resulting message is intentionally an error.
-const DEMO_LOADING_MS = 1200;
-const DEMO_ERROR_MESSAGE =
-  "Demo error: this interaction is being demonstrated locally.";
+const GENERIC_REQUEST_ERROR =
+  "Something went wrong. Please try again.";
+
+/** Tagged error so retryable (5xx/network) failures can be told apart. */
+class RequestError extends Error {
+  readonly retryable: boolean;
+
+  constructor(message: string, retryable: boolean) {
+    super(message);
+    this.name = "RequestError";
+    this.retryable = retryable;
+  }
+}
+
+// Builds the bounded context for a request: the most recent messages that fit
+// within the server's limits. Attachments are included only while their bytes
+// are still available in the session cache; messages with neither text nor
+// usable attachments are dropped so the request never fails validation.
+function buildRequestContext(
+  messages: ChatMessage[],
+  fileCache: Map<string, File>
+): ApiChatMessage[] {
+  const context: ApiChatMessage[] = [];
+  let totalChars = 0;
+
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    const content = message.content.trim().slice(0, MAX_MESSAGE_CHARS);
+    const attachmentIds = (message.attachments ?? [])
+      .filter(
+        (attachment) =>
+          attachment.contentAvailable && fileCache.has(attachment.id)
+      )
+      .map((attachment) => attachment.id);
+
+    if (!content && attachmentIds.length === 0) {
+      continue;
+    }
+
+    // The newest message is always kept, even if it sits exactly at a limit.
+    if (context.length > 0) {
+      if (context.length >= MAX_MESSAGES) break;
+      if (totalChars + content.length > MAX_TOTAL_CHARS) break;
+    }
+
+    context.unshift({
+      role: message.role,
+      content,
+      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+    });
+    totalChars += content.length;
+  }
+
+  return context;
+}
 
 export const BusinessSupportChat: React.FC = () => {
   const {
@@ -38,26 +94,26 @@ export const BusinessSupportChat: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [isAnalyzingFiles, setIsAnalyzingFiles] = useState<boolean>(false);
+  const [isRetryableError, setIsRetryableError] = useState<boolean>(true);
 
-  // Guard to ensure any asynchronous demonstration cannot update a reset conversation
+  // Guard to ensure an async reply cannot land in a reset or switched conversation
   const conversationSessionRef = useRef<number>(0);
 
-  // Handle for the pending demonstration timer so it can be cleared safely
-  const demoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Handle for the in-flight request so it can be aborted safely
+  const requestControllerRef = useRef<AbortController | null>(null);
 
-  const clearDemoTimer = useCallback(() => {
-    if (demoTimerRef.current !== null) {
-      clearTimeout(demoTimerRef.current);
-      demoTimerRef.current = null;
-    }
-  }, []);
+  // Real File objects for attachments created this session, keyed by attachment
+  // id. Never persisted; used to (re)send the file bytes with each request.
+  const attachmentFileCacheRef = useRef<Map<string, File>>(new Map());
 
-  // Clean up any pending timer if the component unmounts
+  // Cancel any pending request if the component unmounts
   useEffect(() => {
     return () => {
-      clearDemoTimer();
+      requestControllerRef.current?.abort();
+      requestControllerRef.current = null;
     };
-  }, [clearDemoTimer]);
+  }, []);
 
   const activeConversation = useMemo(
     () =>
@@ -69,40 +125,129 @@ export const BusinessSupportChat: React.FC = () => {
 
   const messages = activeConversation?.messages ?? [];
 
-  // Runs the local loading demonstration and resolves to the demonstration error.
-  const runDemo = useCallback(() => {
-    const session = conversationSessionRef.current;
+  // Sends the conversation context to the API and appends the assistant's reply.
+  const requestAssistantReply = useCallback(
+    async (conversationId: string, context: ApiChatMessage[]) => {
+      const session = conversationSessionRef.current;
 
-    clearDemoTimer();
-    setError(null);
-    setIsLoading(true);
+      // Cancel any request that may still be running.
+      requestControllerRef.current?.abort();
+      const controller = new AbortController();
+      requestControllerRef.current = controller;
 
-    demoTimerRef.current = setTimeout(() => {
-      demoTimerRef.current = null;
+      const includesFiles = context.some(
+        (message) => (message.attachmentIds?.length ?? 0) > 0
+      );
 
-      // If the conversation was reset (or the component moved on), ignore this result
-      if (conversationSessionRef.current !== session) {
-        return;
+      setError(null);
+      setIsRetryableError(true);
+      setIsAnalyzingFiles(includesFiles);
+      setIsLoading(true);
+
+      try {
+        const formData = new FormData();
+        formData.append(
+          "payload",
+          JSON.stringify({ conversationId, messages: context })
+        );
+        for (const message of context) {
+          for (const id of message.attachmentIds ?? []) {
+            const file = attachmentFileCacheRef.current.get(id);
+            if (file) {
+              formData.append(`file:${id}`, file, file.name);
+            }
+          }
+        }
+
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          let message = "The assistant could not respond. Please try again.";
+          try {
+            const errorData = (await response.json()) as { error?: unknown };
+            if (typeof errorData.error === "string") {
+              message = errorData.error;
+            }
+          } catch {
+            // Keep the generic message when the error body is not JSON.
+          }
+          throw new RequestError(message, response.status >= 500);
+        }
+
+        const data = (await response.json()) as {
+          message?: { content?: unknown };
+        };
+        const rawContent = data.message?.content;
+        const content = typeof rawContent === "string" ? rawContent.trim() : "";
+        if (!content) {
+          throw new RequestError(
+            "The assistant returned an empty response. Please try again.",
+            true
+          );
+        }
+
+        // Ignore the result if the conversation was reset or switched meanwhile.
+        if (conversationSessionRef.current !== session) {
+          return;
+        }
+
+        const assistantMessage: ChatMessage = {
+          id: createMessageId(),
+          role: "assistant",
+          content,
+          createdAt: new Date().toISOString(),
+        };
+        appendMessage(conversationId, assistantMessage, "");
+
+        requestControllerRef.current = null;
+        setIsLoading(false);
+        setIsAnalyzingFiles(false);
+      } catch (err) {
+        // A cancelled request (reset, switch, unmount) must not surface an error.
+        if (controller.signal.aborted) {
+          return;
+        }
+        if (conversationSessionRef.current !== session) {
+          return;
+        }
+
+        requestControllerRef.current = null;
+        setIsLoading(false);
+        setIsAnalyzingFiles(false);
+        setIsRetryableError(
+          err instanceof RequestError ? err.retryable : true
+        );
+        setError(
+          err instanceof Error && err.message
+            ? err.message
+            : GENERIC_REQUEST_ERROR
+        );
       }
+    },
+    [appendMessage]
+  );
 
-      setIsLoading(false);
-      setError(DEMO_ERROR_MESSAGE);
-    }, DEMO_LOADING_MS);
-  }, [clearDemoTimer]);
-
-  // Invalidate any asynchronous demonstration and clear its transient UI state.
+  // Invalidate any in-flight request and clear the transient UI state.
   const resetTransientState = useCallback(() => {
     conversationSessionRef.current += 1;
-    clearDemoTimer();
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = null;
     setIsLoading(false);
+    setIsAnalyzingFiles(false);
+    setIsRetryableError(true);
     setError(null);
-  }, [clearDemoTimer]);
+  }, []);
 
   // Release the object URLs of any pending composer attachments and reset them.
   const clearComposerAttachments = () => {
     attachments.forEach(revokeAttachmentPreview);
     setAttachments([]);
     setAttachmentError(null);
+    attachmentFileCacheRef.current.clear();
   };
 
   const handleFilesSelected = (files: FileList) => {
@@ -111,16 +256,27 @@ export const BusinessSupportChat: React.FC = () => {
       return;
     }
 
-    const accepted: Attachment[] = [];
     const errors: string[] = [];
+    const remaining = MAX_ATTACHMENTS - attachments.length;
+    if (remaining <= 0) {
+      setAttachmentError(`You can attach up to ${MAX_ATTACHMENTS} files.`);
+      return;
+    }
+    if (selected.length > remaining) {
+      errors.push(`You can attach up to ${MAX_ATTACHMENTS} files at once.`);
+    }
 
-    for (const file of selected) {
+    const accepted: Attachment[] = [];
+
+    for (const file of selected.slice(0, remaining)) {
       const validationError = validateAttachmentFile(file);
       if (validationError) {
         errors.push(validationError);
         continue;
       }
-      accepted.push(createAttachmentFromFile(file));
+      const attachment = createAttachmentFromFile(file);
+      attachmentFileCacheRef.current.set(attachment.id, file);
+      accepted.push(attachment);
     }
 
     if (accepted.length > 0) {
@@ -134,6 +290,7 @@ export const BusinessSupportChat: React.FC = () => {
     if (target) {
       revokeAttachmentPreview(target);
     }
+    attachmentFileCacheRef.current.delete(id);
     setAttachments((prev) => prev.filter((attachment) => attachment.id !== id));
     setAttachmentError(null);
   };
@@ -179,19 +336,37 @@ export const BusinessSupportChat: React.FC = () => {
     setAttachments([]);
     setAttachmentError(null);
 
-    // 7. Clear any previous error and start the local loading demonstration.
-    runDemo();
+    // 7. Build the bounded request context and request the assistant's reply.
+    const context = buildRequestContext(
+      [...messages, userMessage],
+      attachmentFileCacheRef.current
+    );
+    void requestAssistantReply(conversationId, context);
   };
 
-  const handleRetryDemo = () => {
-    // Do not allow overlapping retries while a demonstration is in progress.
-    if (isLoading) {
+  const handleRetry = useCallback(() => {
+    // Do not allow overlapping retries while a request is in progress.
+    if (isLoading || !activeConversation) {
       return;
     }
 
-    // Re-run the same local demonstration; no message is sent and no reply is created.
-    runDemo();
-  };
+    // Re-send the existing history (including the failed user message) without
+    // appending a duplicate user message.
+    const context = buildRequestContext(
+      activeConversation.messages,
+      attachmentFileCacheRef.current
+    );
+    const lastMessage = context[context.length - 1];
+    if (!lastMessage || lastMessage.role !== "user") {
+      setIsRetryableError(false);
+      setError(
+        "This message can no longer be sent because its files are unavailable. Please send it again."
+      );
+      return;
+    }
+
+    void requestAssistantReply(activeConversation.id, context);
+  }, [isLoading, activeConversation, requestAssistantReply]);
 
   const handleSelectPrompt = (promptText: string) => {
     // Places suggestion text into the message composer without auto-submitting
@@ -222,7 +397,10 @@ export const BusinessSupportChat: React.FC = () => {
   const handleDeleteConversation = (id: string) => {
     const target = conversations.find((conversation) => conversation.id === id);
     target?.messages.forEach((message) =>
-      message.attachments?.forEach(revokeAttachmentPreview)
+      message.attachments?.forEach((attachment) => {
+        revokeAttachmentPreview(attachment);
+        attachmentFileCacheRef.current.delete(attachment.id);
+      })
     );
 
     removeConversation(id);
@@ -268,7 +446,7 @@ export const BusinessSupportChat: React.FC = () => {
         <ErrorBanner
           message={error}
           onDismiss={() => setError(null)}
-          onRetry={handleRetryDemo}
+          onRetry={isRetryableError ? handleRetry : undefined}
         />
 
         <main className="flex-1 flex flex-col min-h-0 relative bg-background">
@@ -276,6 +454,7 @@ export const BusinessSupportChat: React.FC = () => {
             messages={messages}
             onSelectPrompt={handleSelectPrompt}
             isLoading={isLoading}
+            loadingLabel={isAnalyzingFiles ? "Analyzing files..." : undefined}
           />
         </main>
 

@@ -1,14 +1,16 @@
 import type { Attachment, AttachmentKind } from "@/types/chat";
+import { MAX_FILE_BYTES } from "@/lib/chatLimits";
 
-// Frontend-only demo: files are never uploaded. Metadata is kept in memory and
-// persisted; the actual file bytes are intentionally not stored anywhere.
+// File bytes are held in memory for the active session and forwarded to the
+// server for processing; only metadata is ever persisted.
 
-export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10 MB per file
+export const MAX_ATTACHMENT_BYTES = MAX_FILE_BYTES; // 10 MB per file
 
 const EXTENSION_MIME_MAP: Record<string, string> = {
   pdf: "application/pdf",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   txt: "text/plain",
+  csv: "text/csv",
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",

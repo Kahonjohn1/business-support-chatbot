@@ -5,7 +5,7 @@ interface LoadingIndicatorProps {
 }
 
 export const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({
-  label = "Demonstrating pending state...",
+  label = "Generating response...",
 }) => {
   return (
     <div
