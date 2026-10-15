@@ -50,17 +50,25 @@ const rateLimiter = createRateLimiter({
   windowMs: readEnvInt("RATE_LIMIT_WINDOW_MS", RATE_LIMIT_WINDOW_MS),
 });
 
+// Client IP headers (x-forwarded-for / x-real-ip) are supplied by the caller
+// unless a proxy rewrites them, so a directly exposed client can spoof them.
+// Trust them only when the deployment explicitly opts in (TRUST_PROXY), e.g.
+// when running behind a managed platform load balancer we control.
+const TRUST_PROXY = /^(1|true|yes)$/i.test(
+  process.env.TRUST_PROXY?.trim() ?? ""
+);
+
 function getClientKey(request: Request): string {
-  // Behind a trusted proxy/host (e.g. Vercel) these headers identify the client.
-  // If the app is exposed directly, a client could spoof them; the limiter is
-  // best-effort either way.
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
+  if (TRUST_PROXY) {
+    const forwarded = request.headers.get("x-forwarded-for");
+    const first = forwarded?.split(",")[0]?.trim();
     if (first) return first;
+    const realIp = request.headers.get("x-real-ip")?.trim();
+    if (realIp) return realIp;
   }
-  const realIp = request.headers.get("x-real-ip")?.trim();
-  return realIp || "unknown";
+  // No reliable per-client identity: fall back to a single shared bucket. This
+  // is not spoofable, but it limits the whole instance together.
+  return "global";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

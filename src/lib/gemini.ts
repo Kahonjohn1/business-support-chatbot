@@ -3,7 +3,10 @@ import "server-only";
 import { GoogleGenAI } from "@google/genai";
 import type { Part } from "@google/genai";
 import type { MessageRole } from "@/types/chat";
-import { buildGenerationConfig } from "@/lib/geminiConfig";
+import {
+  buildGenerationConfig,
+  resolveMaxOutputTokens,
+} from "@/lib/geminiConfig";
 import { CSV_MIME, DOCX_MIME, PDF_MIME, TEXT_MIME } from "@/lib/fileProcessing";
 import type { PreparedFile } from "@/lib/fileProcessing";
 
@@ -141,6 +144,10 @@ export async function generateAssistantReply(
   }
 
   const model = process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
+  // Configurable output cap (GEMINI_MAX_OUTPUT_TOKENS), clamped to a hard ceiling.
+  const maxOutputTokens = resolveMaxOutputTokens(
+    process.env.GEMINI_MAX_OUTPUT_TOKENS
+  );
 
   const client = new GoogleGenAI({
     apiKey,
@@ -153,7 +160,7 @@ export async function generateAssistantReply(
     const response = await client.models.generateContent({
       model,
       contents,
-      config: buildGenerationConfig(SYSTEM_INSTRUCTION, signal),
+      config: buildGenerationConfig(SYSTEM_INSTRUCTION, signal, maxOutputTokens),
     });
 
     const text = response.text?.trim();

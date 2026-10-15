@@ -9,12 +9,8 @@ import { ErrorBanner } from "./ErrorBanner";
 import { ConversationSidebar } from "./ConversationSidebar";
 import { useConversations } from "@/hooks/useConversations";
 import { createMessageId, deriveConversationTitle } from "@/lib/conversations";
-import {
-  MAX_ATTACHMENTS,
-  MAX_MESSAGE_CHARS,
-  MAX_MESSAGES,
-  MAX_TOTAL_CHARS,
-} from "@/lib/chatLimits";
+import { MAX_ATTACHMENTS, MAX_MESSAGE_CHARS } from "@/lib/chatLimits";
+import { buildRequestContext } from "@/lib/requestContext";
 import {
   createAttachmentFromFile,
   revokeAttachmentPreview,
@@ -35,46 +31,11 @@ class RequestError extends Error {
   }
 }
 
-// Builds the bounded context for a request: the most recent messages that fit
-// within the server's limits. Attachments are included only while their bytes
-// are still available in the session cache; messages with neither text nor
-// usable attachments are dropped so the request never fails validation.
-function buildRequestContext(
-  messages: ChatMessage[],
-  fileCache: Map<string, File>
-): ApiChatMessage[] {
-  const context: ApiChatMessage[] = [];
-  let totalChars = 0;
-
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const message = messages[i];
-    const content = message.content.trim().slice(0, MAX_MESSAGE_CHARS);
-    const attachmentIds = (message.attachments ?? [])
-      .filter(
-        (attachment) =>
-          attachment.contentAvailable && fileCache.has(attachment.id)
-      )
-      .map((attachment) => attachment.id);
-
-    if (!content && attachmentIds.length === 0) {
-      continue;
-    }
-
-    // The newest message is always kept, even if it sits exactly at a limit.
-    if (context.length > 0) {
-      if (context.length >= MAX_MESSAGES) break;
-      if (totalChars + content.length > MAX_TOTAL_CHARS) break;
-    }
-
-    context.unshift({
-      role: message.role,
-      content,
-      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
-    });
-    totalChars += content.length;
-  }
-
-  return context;
+// Transient failures worth retrying: rate limiting (429) and server errors
+// (5xx). Validation errors (400/413/415) are not retryable and should not offer
+// a Retry button, since resending identical input would fail again.
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500;
 }
 
 export const BusinessSupportChat: React.FC = () => {
@@ -175,7 +136,7 @@ export const BusinessSupportChat: React.FC = () => {
           } catch {
             // Keep the generic message when the error body is not JSON.
           }
-          throw new RequestError(message, response.status >= 500);
+          throw new RequestError(message, isRetryableStatus(response.status));
         }
 
         const data = (await response.json()) as {
@@ -302,6 +263,17 @@ export const BusinessSupportChat: React.FC = () => {
 
     // 2. If there is neither text nor an attachment, do nothing.
     if (!trimmed && !hasAttachments) {
+      return;
+    }
+
+    // 2b. Guard against an over-length message before it becomes an API call.
+    //     The composer's maxLength normally prevents this; this is a defensive
+    //     check so an invalid request is never sent.
+    if (trimmed.length > MAX_MESSAGE_CHARS) {
+      setIsRetryableError(false);
+      setError(
+        `Messages are limited to ${MAX_MESSAGE_CHARS} characters. Please shorten your message and try again.`
+      );
       return;
     }
 
