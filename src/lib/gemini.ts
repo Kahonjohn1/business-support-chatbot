@@ -7,6 +7,11 @@ import {
   buildGenerationConfig,
   resolveMaxOutputTokens,
 } from "@/lib/geminiConfig";
+import {
+  isAbortError,
+  resolveFallbackModel,
+  runWithModelFallback,
+} from "@/lib/geminiFallback";
 import { CSV_MIME, DOCX_MIME, PDF_MIME, TEXT_MIME } from "@/lib/fileProcessing";
 import type { PreparedFile } from "@/lib/fileProcessing";
 
@@ -53,13 +58,6 @@ export class GeminiTimeoutError extends Error {
     super(message);
     this.name = "GeminiTimeoutError";
   }
-}
-
-function isAbortError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    (error.name === "AbortError" || error.name === "TimeoutError")
-  );
 }
 
 // Composes a safe instruction when the user sends files without any text.
@@ -144,6 +142,12 @@ export async function generateAssistantReply(
   }
 
   const model = process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
+  // Optional secondary model retried once on a recoverable provider failure.
+  // Missing, blank, or primary-identical values disable the fallback.
+  const fallbackModel = resolveFallbackModel(
+    model,
+    process.env.GEMINI_FALLBACK_MODEL
+  );
   // Configurable output cap (GEMINI_MAX_OUTPUT_TOKENS), clamped to a hard ceiling.
   const maxOutputTokens = resolveMaxOutputTokens(
     process.env.GEMINI_MAX_OUTPUT_TOKENS
@@ -156,9 +160,11 @@ export async function generateAssistantReply(
 
   const contents = toGeminiContents(messages);
 
-  try {
+  // One model call. Reuses the same contents, abort signal, and output cap for
+  // the primary and fallback, so limits and cancellation are identical for both.
+  const attempt = async (modelName: string): Promise<string> => {
     const response = await client.models.generateContent({
-      model,
+      model: modelName,
       contents,
       config: buildGenerationConfig(SYSTEM_INSTRUCTION, signal, maxOutputTokens),
     });
@@ -168,6 +174,20 @@ export async function generateAssistantReply(
       throw new GeminiProviderError("The model returned an empty response.");
     }
     return text;
+  };
+
+  try {
+    return await runWithModelFallback({
+      primaryModel: model,
+      fallbackModel,
+      attempt,
+      signal,
+      onFallback: ({ failedModel, nextModel, status }) => {
+        console.warn(
+          `[gemini] model "${failedModel}" failed (status ${status ?? "network"}); retrying with "${nextModel}"`
+        );
+      },
+    });
   } catch (error) {
     if (error instanceof GeminiProviderError) {
       throw error;

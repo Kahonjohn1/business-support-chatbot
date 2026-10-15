@@ -74,3 +74,20 @@ export function revokeAttachmentPreview(attachment: Attachment): void {
     URL.revokeObjectURL(attachment.previewUrl);
   }
 }
+
+/**
+ * Removes only the given attachments' file bytes from the session cache.
+ *
+ * The cache is shared across all conversations, so clearing it wholesale (for
+ * example when starting a new chat or switching conversations) would drop files
+ * still needed to retry or resend messages in other conversations. Callers must
+ * therefore release just the attachments they own.
+ */
+export function releaseAttachmentFiles(
+  attachments: readonly Attachment[],
+  fileCache: Map<string, File>
+): void {
+  for (const attachment of attachments) {
+    fileCache.delete(attachment.id);
+  }
+}

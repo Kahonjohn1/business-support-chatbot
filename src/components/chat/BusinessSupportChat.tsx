@@ -13,6 +13,7 @@ import { MAX_ATTACHMENTS, MAX_MESSAGE_CHARS } from "@/lib/chatLimits";
 import { buildRequestContext } from "@/lib/requestContext";
 import {
   createAttachmentFromFile,
+  releaseAttachmentFiles,
   revokeAttachmentPreview,
   validateAttachmentFile,
 } from "@/lib/attachments";
@@ -204,11 +205,13 @@ export const BusinessSupportChat: React.FC = () => {
   }, []);
 
   // Release the object URLs of any pending composer attachments and reset them.
+  // Only these pending files are dropped from the shared cache; files belonging
+  // to messages in other conversations must remain available for retries.
   const clearComposerAttachments = () => {
     attachments.forEach(revokeAttachmentPreview);
+    releaseAttachmentFiles(attachments, attachmentFileCacheRef.current);
     setAttachments([]);
     setAttachmentError(null);
-    attachmentFileCacheRef.current.clear();
   };
 
   const handleFilesSelected = (files: FileList) => {
