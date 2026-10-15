@@ -1,25 +1,13 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useSyncExternalStore } from "react";
 import { MessageSquarePlus } from "lucide-react";
 import type { Conversation } from "@/types/chat";
 import {
   formatConversationTime,
   groupConversationsByDate,
 } from "@/lib/conversations";
-
-const noopSubscribe = () => () => {};
-
-// Hydration-safe flag: false during prerender, true on the client. This keeps
-// time-dependent formatting out of the server render.
-function useIsClient(): boolean {
-  return useSyncExternalStore(
-    noopSubscribe,
-    () => true,
-    () => false
-  );
-}
+import { useIsHydrated } from "@/hooks/useIsHydrated";
 
 interface ConversationSidebarProps {
   conversations: Conversation[];
@@ -47,8 +35,8 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   const [renameValue, setRenameValue] = useState<string>("");
   const renameInputRef = useRef<HTMLInputElement>(null);
 
-  const isClient = useIsClient();
-  const now = useMemo(() => (isClient ? new Date() : null), [isClient]);
+  const isHydrated = useIsHydrated();
+  const now = useMemo(() => (isHydrated ? new Date() : null), [isHydrated]);
 
   const groups = useMemo(
     () => (now ? groupConversationsByDate(conversations, now) : []),
@@ -159,30 +147,32 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
 
       <div className="flex-1 overflow-y-auto px-3 py-3">
         {conversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full px-4 py-10 text-center">
-            <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-background border border-border mb-3">
-              <svg
-                className="w-5 h-5 text-muted-foreground"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.75}
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M8.25 6.75h7.5M8.25 12h4.5m-8.25 8.25l2.4-1.6a2.25 2.25 0 011.25-.38h11.1a2.25 2.25 0 002.25-2.25V6a2.25 2.25 0 00-2.25-2.25H4.5A2.25 2.25 0 002.25 6v10.5c0 .34.076.663.212.953z"
-                />
-              </svg>
+          isHydrated ? (
+            <div className="flex flex-col items-center justify-center h-full px-4 py-10 text-center">
+              <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-background border border-border mb-3">
+                <svg
+                  className="w-5 h-5 text-muted-foreground"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M8.25 6.75h7.5M8.25 12h4.5m-8.25 8.25l2.4-1.6a2.25 2.25 0 011.25-.38h11.1a2.25 2.25 0 002.25-2.25V6a2.25 2.25 0 00-2.25-2.25H4.5A2.25 2.25 0 002.25 6v10.5c0 .34.076.663.212.953z"
+                  />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-foreground">
+                No saved conversations
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Start a new chat and it will appear here.
+              </p>
             </div>
-            <p className="text-sm font-medium text-foreground">
-              No saved conversations
-            </p>
-            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              Start a new chat and it will appear here.
-            </p>
-          </div>
+          ) : null
         ) : (
           <div className="space-y-4">
             {groups.map((group) => (

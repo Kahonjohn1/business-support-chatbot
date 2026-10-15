@@ -8,6 +8,7 @@ import { ChatComposer } from "./ChatComposer";
 import { ErrorBanner } from "./ErrorBanner";
 import { ConversationSidebar } from "./ConversationSidebar";
 import { useConversations } from "@/hooks/useConversations";
+import { useIsHydrated } from "@/hooks/useIsHydrated";
 import {
   createMessageId,
   deriveConversationTitle,
@@ -53,6 +54,11 @@ export const BusinessSupportChat: React.FC = () => {
     removeConversation,
     selectConversation,
   } = useConversations();
+
+  // False until the client has hydrated. The restored conversation lives in
+  // localStorage, so the server renders an empty list; gating the empty state
+  // on this flag avoids flashing it before the conversation appears.
+  const isHydrated = useIsHydrated();
 
   const [input, setInput] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -471,6 +477,7 @@ export const BusinessSupportChat: React.FC = () => {
             onSelectPrompt={handleSelectPrompt}
             isLoading={isLoading}
             loadingLabel={isAnalyzingFiles ? "Analyzing files..." : undefined}
+            isHydrated={isHydrated}
           />
         </main>
 
