@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ApiChatMessage, Attachment, ChatMessage } from "@/types/chat";
 import { ChatHeader } from "./ChatHeader";
 import { MessageList } from "./MessageList";
@@ -18,6 +24,7 @@ import {
   validateAttachmentFile,
 } from "@/lib/attachments";
 import { evaluateSubmission, isStaleResponse } from "@/lib/submission";
+import { buildSupportSummary } from "@/lib/supportChannels";
 
 const GENERIC_REQUEST_ERROR =
   "Something went wrong. Please try again.";
@@ -52,6 +59,14 @@ export const BusinessSupportChat: React.FC = () => {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isAnalyzingFiles, setIsAnalyzingFiles] = useState<boolean>(false);
   const [isRetryableError, setIsRetryableError] = useState<boolean>(true);
+  const [isSupportOpen, setIsSupportOpen] = useState<boolean>(false);
+
+  // Concise, honest summary of the customer's issue drawn from the conversation,
+  // used only when the user chooses to contact human support.
+  const supportSummary = useMemo(
+    () => buildSupportSummary(messages),
+    [messages]
+  );
 
   // Guard to ensure an async reply cannot land in a conversation that was reset.
   const conversationSessionRef = useRef<number>(0);
@@ -366,14 +381,25 @@ export const BusinessSupportChat: React.FC = () => {
     clearComposerAttachments();
     clearConversation();
     setInput("");
+    setIsSupportOpen(false);
   };
+
+  const handleToggleSupport = useCallback(() => {
+    setIsSupportOpen((open) => !open);
+  }, []);
 
   return (
     <section
       aria-label="Marque Technologies Support chat"
       className="relative flex flex-col w-full max-w-6xl h-[680px] sm:h-[740px] md:h-[800px] max-h-[90vh] bg-surface border border-border rounded-2xl overflow-hidden shadow-xs"
     >
-      <ChatHeader onNewConversation={handleNewConversation} />
+      <ChatHeader
+        onNewConversation={handleNewConversation}
+        onContactSupport={handleToggleSupport}
+        onCloseSupport={() => setIsSupportOpen(false)}
+        isSupportOpen={isSupportOpen}
+        supportSummary={supportSummary}
+      />
 
       <ErrorBanner
         message={error}

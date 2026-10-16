@@ -10,6 +10,12 @@ import {
   readGeminiErrorStatus,
   runWithModelFallback,
 } from "../src/lib/geminiFallback.ts";
+import {
+  SUPPORT_EMAIL,
+  SUPPORT_WEBSITE_URL,
+  SUPPORT_WHATSAPP_NUMBER,
+  SUPPORT_WHATSAPP_URL,
+} from "../src/lib/supportChannels.ts";
 
 // These tests assert instruction *requirements* and the existing request-handling
 // seams, not the exact wording of any generated reply. The live Gemini API is
@@ -114,4 +120,62 @@ test("the support instruction is wired with the output cap and abort signal", ()
   assert.equal(config.abortSignal, controller.signal);
   assert.equal(config.maxOutputTokens, MAX_OUTPUT_TOKENS);
   assert.equal(MAX_OUTPUT_TOKENS, 1024);
+});
+
+// 11. Human support is offered for the right reasons: explicit requests,
+// unresolved troubleshooting, Marque Contact enquiries, and unverifiable
+// company-specific information.
+test("human support is offered for the approved situations", () => {
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /speak to a person or support representative/i
+  );
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /troubleshooting has not resolved the issue/i
+  );
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /Marque Contact product enquiry needs confirmation from the company/i
+  );
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /company-specific information that cannot be verified/i
+  );
+});
+
+// 12. The instruction exposes exactly the approved contact channels.
+test("the approved contact details are available to the assistant", () => {
+  assert.match(SUPPORT_SYSTEM_INSTRUCTION, /approved contact details/i);
+  assert.ok(SUPPORT_SYSTEM_INSTRUCTION.includes(SUPPORT_WHATSAPP_NUMBER));
+  assert.ok(SUPPORT_SYSTEM_INSTRUCTION.includes(SUPPORT_WHATSAPP_URL));
+  assert.ok(SUPPORT_SYSTEM_INSTRUCTION.includes(SUPPORT_EMAIL));
+  assert.ok(SUPPORT_SYSTEM_INSTRUCTION.includes(SUPPORT_WEBSITE_URL));
+});
+
+// 13. Human support is not forced on ordinary answerable questions.
+test("the assistant does not push human support for answerable questions", () => {
+  assert.match(SUPPORT_SYSTEM_INSTRUCTION, /Do not push human support/i);
+  assert.match(SUPPORT_SYSTEM_INSTRUCTION, /answer those directly/i);
+});
+
+// 14. The assistant must never falsely claim an escalation happened.
+test("the assistant never falsely claims escalation", () => {
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /Never claim that a human has been notified/i
+  );
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /support ticket was created/i
+  );
+});
+
+// 15. No additional channels, hours, or response times may be invented.
+test("the assistant must not invent other channels or policies", () => {
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /Do not invent other contact channels/i
+  );
+  assert.match(SUPPORT_SYSTEM_INSTRUCTION, /response times/i);
 });
