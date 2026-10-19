@@ -1,8 +1,10 @@
 // Groq provider configuration: model IDs, request limits, and the pure request
 // options seam (kept free of server-only imports so it can be unit tested).
 
-// Default production chat model (131K context, text-only).
-export const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+// Default production chat model (131K context, text-only). Must be a model the
+// API key can actually access: llama-3.3-70b-versatile and llama-3.1-8b-instant
+// are Enterprise-tier ("Contact Sales") and return 404 on developer plans.
+export const DEFAULT_MODEL = "openai/gpt-oss-120b";
 
 // Groq's only documented vision-capable model. Image attachments always route
 // here; it has no configured fallback because Groq offers no second vision

@@ -60,7 +60,7 @@ test("request options preserve the abort signal", () => {
 });
 
 test("the configured provider models and image cap match the Groq docs", () => {
-  assert.equal(DEFAULT_MODEL, "llama-3.3-70b-versatile");
+  assert.equal(DEFAULT_MODEL, "openai/gpt-oss-120b");
   assert.equal(VISION_MODEL, "qwen/qwen3.8-27b");
   assert.equal(MAX_IMAGES_PER_REQUEST, 3);
 });
