@@ -30,6 +30,10 @@ export function isAbortError(error: unknown): boolean {
   return error instanceof Error && /abort|timeout/i.test(error.name);
 }
 
+export function isAbortLike(error: unknown): boolean {
+  return isAbortError(error);
+}
+
 /**
  * Whether a failed model call is worth retrying on another model.
  *

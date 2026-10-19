@@ -9,8 +9,10 @@ import {
 } from "@/lib/geminiConfig";
 import {
   isAbortError,
+  isAbortLike,
   resolveFallbackModel,
   runWithModelFallback,
+  readGeminiErrorStatus,
 } from "@/lib/geminiFallback";
 import { SUPPORT_SYSTEM_INSTRUCTION } from "@/lib/systemInstruction";
 import { CSV_MIME, DOCX_MIME, PDF_MIME, TEXT_MIME } from "@/lib/fileProcessing";
@@ -146,31 +148,69 @@ export async function generateAssistantReply(
     apiKey,
     httpOptions: { timeout: REQUEST_TIMEOUT_MS },
   });
+  const start = Date.now();
+  const reqId = "gem" + Math.random().toString(36).slice(2,8);
+  const ctxMsgCount = messages.length;
+  const ctxTotalChars = messages.reduce((n,m)=>n + (m.content?.trim().length||0), 0);
+  const ctxAttachCount = messages.reduce((n,m)=>n + (m.files?.length||0), 0);
+  const ctxAttachBytes = messages.reduce((n,m)=>{
+    const f=m.files||[];
+    for(const x of f){
+      if(x && x.kind==="inline" && (x as any).size!==undefined) n+=(x as any).size;
+      else if(x && x.text) n += Buffer.byteLength(x.text, "utf8");
+    }
+    return n;
+  }, 0);
+  try { console.log(JSON.stringify({level:"info",reqId,phase:"gemini.start",model,ctx:{msgCount:ctxMsgCount,totalChars:ctxTotalChars,attachCount:ctxAttachCount,attachBytes:ctxAttachBytes}})); } catch {}
+
 
   const contents = toGeminiContents(messages);
 
   // One model call. Reuses the same contents, abort signal, and output cap for
   // the primary and fallback, so limits and cancellation are identical for both.
   const attempt = async (modelName: string): Promise<string> => {
-    const response = await client.models.generateContent({
-      model: modelName,
-      contents,
-      config: buildGenerationConfig(
-        SUPPORT_SYSTEM_INSTRUCTION,
-        signal,
-        maxOutputTokens
-      ),
-    });
-
-    const text = response.text?.trim();
-    if (!text) {
-      throw new GeminiProviderError("The model returned an empty response.");
+    const t0 = Date.now();
+    try {
+      console.log(JSON.stringify({level:"info",reqId,phase:"gemini.attempt.start",model:modelName}));
+      const response = await client.models.generateContent({
+        model: modelName,
+        contents,
+        config: buildGenerationConfig(
+          SUPPORT_SYSTEM_INSTRUCTION,
+          signal,
+          maxOutputTokens
+        ),
+      });
+      const dur = Date.now() - t0;
+      const text = response.text?.trim();
+      if (!text) {
+        try { console.log(JSON.stringify({level:"warn",reqId,phase:"gemini.attempt.empty",model:modelName,durMs:dur})); } catch {}
+        throw new GeminiProviderError("The model returned an empty response.");
+      }
+      try { console.log(JSON.stringify({level:"info",reqId,phase:"gemini.attempt.ok",model:modelName,durMs:dur})); } catch {}
+      return text;
+    } catch (e) {
+      const dur = Date.now() - t0;
+      const status = readGeminiErrorStatus(e);
+      const abortLike = isAbortLike(e);
+      try {
+        console.log(JSON.stringify({
+          level:"warn",
+          reqId,
+          phase:"gemini.attempt.fail",
+          model:modelName,
+          durMs:dur,
+          abortLike,
+          status: status ?? null,
+          errName: e instanceof Error ? e.name : typeof e
+        }));
+      } catch {}
+      throw e;
     }
-    return text;
   };
 
   try {
-    return await runWithModelFallback({
+    const reply = await runWithModelFallback({
       primaryModel: model,
       fallbackModel,
       attempt,
@@ -179,16 +219,38 @@ export async function generateAssistantReply(
         console.warn(
           `[gemini] model "${failedModel}" failed (status ${status ?? "network"}); retrying with "${nextModel}"`
         );
+        try {
+          console.log(JSON.stringify({level:"info",reqId,phase:"gemini.fallback.trigger",primaryModel:failedModel,fallbackModel:nextModel,status:status??null}));
+        } catch {}
       },
     });
+    const totalMsOk = Date.now() - start;
+    try { console.log(JSON.stringify({level:"info",reqId,phase:"gemini.total.ok",model,fallbackModel:fallbackModel??null,totalMs:totalMsOk})); } catch {}
+    return reply;
   } catch (error) {
+    const totalMs = Date.now() - start;
+    const status = readGeminiErrorStatus(error);
+    const abortLike = isAbortLike(error);
+    try {
+      console.log(JSON.stringify({
+        level:"error",
+        reqId,
+        phase:"gemini.total.fail",
+        model,
+        fallbackModel: fallbackModel ?? null,
+        totalMs,
+        abortLike,
+        status: status ?? null,
+        errName: error instanceof Error ? error.name : typeof error,
+        classified: error instanceof GeminiTimeoutError ? "timeout" : (error instanceof GeminiProviderError ? "provider" : (error instanceof GeminiConfigError ? "config" : "unknown"))
+      }));
+    } catch {}
     if (error instanceof GeminiProviderError) {
       throw error;
     }
     if (isAbortError(error)) {
       throw new GeminiTimeoutError("The model request was aborted or timed out.");
     }
-    // Log a sanitized message server-side; never surface raw provider errors.
     console.error(
       "[gemini] generateContent failed:",
       error instanceof Error ? error.message : "unknown error"

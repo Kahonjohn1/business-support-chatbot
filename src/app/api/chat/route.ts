@@ -149,6 +149,8 @@ function parseMessages(payload: unknown): MessagesResult {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const tReq0 = Date.now();
+  const reqId = "api" + Math.random().toString(36).slice(2,8);
   const rate = rateLimiter.check(getClientKey(request));
   if (!rate.allowed) {
     return Response.json(
@@ -262,10 +264,17 @@ export async function POST(request: Request): Promise<Response> {
       : {}),
   }));
 
+  const tPrep = Date.now();
+  try {
+    const totalCharsApi = messages.reduce((n,m)=>n + (m.content?.trim().length||0), 0);
+    console.log(JSON.stringify({level:"info",reqId,phase:"api.prep",durMs:tPrep - tReq0,ctx:{msgCount:messages.length,totalChars:totalCharsApi,attachCount:referencedIds.length,totalAttachBytes:totalBytes}}));
+  } catch {}
   try {
     const reply = await generateAssistantReply(geminiMessages, request.signal);
+    try { console.log(JSON.stringify({level:"info",reqId,phase:"api.total.ok",totalMs:Date.now()-tReq0})); } catch {}
     return Response.json({ message: { role: "assistant", content: reply } });
   } catch (error) {
+    try { console.log(JSON.stringify({level:"error",reqId,phase:"api.total.fail",totalMs:Date.now()-tReq0})); } catch {}
     if (error instanceof GeminiConfigError) {
       console.error("[api/chat] configuration error:", error.message);
       return errorResponse(500, "The chat service is not configured.");

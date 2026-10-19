@@ -1,8 +1,8 @@
 import type { ChatMessage } from "@/types/chat";
 
-// Pure helpers for the single, in-memory conversation. There is intentionally
-// no storage here: the conversation is never persisted, so a page reload always
-// starts from an empty state. Kept free of React so the rules can be tested.
+// Pure helpers for the active conversation. Kept free of React and free of any
+// persistence APIs so the rules can be tested directly; reload recovery lives
+// in conversationStorage and is wired up by useChatMessages.
 
 export function createMessageId(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;

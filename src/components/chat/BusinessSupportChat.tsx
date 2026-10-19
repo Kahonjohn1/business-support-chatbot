@@ -48,9 +48,10 @@ function isRetryableStatus(status: number): boolean {
 }
 
 export const BusinessSupportChat: React.FC = () => {
-  // The conversation lives in memory only; nothing is persisted, so a refresh
-  // always starts a new, empty chat.
-  const { messages, appendMessage, clearConversation } = useChatMessages();
+  // The conversation lives in React state, mirrored to a session-scoped copy
+  // so a reload resumes it. isHydrated flips once that copy has been restored.
+  const { messages, appendMessage, clearConversation, isHydrated } =
+    useChatMessages();
 
   const [input, setInput] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -369,6 +370,22 @@ export const BusinessSupportChat: React.FC = () => {
     void requestAssistantReply(context);
   }, [isLoading, messages, requestAssistantReply]);
 
+  // When the page reloaded while a reply was still generating, the restored
+  // conversation ends on an unanswered user turn. Resume it exactly once so the
+  // loading state shows inside the chat and the reply is appended, instead of
+  // leaving the user on a turn they can neither answer nor resend.
+  const interruptedTurnCheckedRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (!isHydrated || interruptedTurnCheckedRef.current) {
+      return;
+    }
+    interruptedTurnCheckedRef.current = true;
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage?.role === "user") {
+      handleRetry();
+    }
+  }, [isHydrated, messages, handleRetry]);
+
   const handleSelectPrompt = (promptText: string) => {
     // Places suggestion text into the message composer without auto-submitting
     setInput(promptText);
@@ -376,7 +393,7 @@ export const BusinessSupportChat: React.FC = () => {
   };
 
   const handleNewConversation = () => {
-    // The conversation is in memory only, so starting a new chat discards it.
+    // Discards the conversation along with its session-scoped copy.
     resetTransientState();
     clearComposerAttachments();
     clearConversation();
