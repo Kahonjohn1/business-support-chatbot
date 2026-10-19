@@ -15,7 +15,7 @@ import {
 } from "../src/lib/supportChannels.ts";
 
 // These tests pin the verified contact details and the summary/link builders.
-// The live Gemini API and the browser clipboard are never touched.
+// The live Groq API and the browser clipboard are never touched.
 
 test("the approved contact details are exactly the verified values", () => {
   assert.equal(SUPPORT_WHATSAPP_NUMBER, "09031261536");

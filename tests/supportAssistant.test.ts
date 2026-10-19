@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 
 import { SUPPORT_SYSTEM_INSTRUCTION } from "../src/lib/systemInstruction.ts";
 import {
-  buildGenerationConfig,
+  buildRequestOptions,
   MAX_OUTPUT_TOKENS,
-} from "../src/lib/geminiConfig.ts";
+} from "../src/lib/groqConfig.ts";
 import {
-  readGeminiErrorStatus,
+  readProviderErrorStatus,
   runWithModelFallback,
-} from "../src/lib/geminiFallback.ts";
+} from "../src/lib/groqFallback.ts";
 import {
   SUPPORT_EMAIL,
   SUPPORT_WEBSITE_URL,
@@ -18,7 +18,7 @@ import {
 } from "../src/lib/supportChannels.ts";
 
 // These tests assert instruction *requirements* and the existing request-handling
-// seams, not the exact wording of any generated reply. The live Gemini API is
+// seams, not the exact wording of any generated reply. The live Groq API is
 // never called.
 
 function providerError(status: number): Error {
@@ -83,8 +83,8 @@ test("out-of-scope requests are redirected", () => {
 
 // 9. Existing cancellation and provider-error handling still works.
 test("provider failures are classified for safe handling", () => {
-  assert.equal(readGeminiErrorStatus(providerError(503)), 503);
-  assert.equal(readGeminiErrorStatus(providerError(401)), 401);
+  assert.equal(readProviderErrorStatus(providerError(503)), 503);
+  assert.equal(readProviderErrorStatus(providerError(401)), 401);
 });
 
 test("cancellation prevents a fallback retry", async () => {
@@ -111,14 +111,14 @@ test("cancellation prevents a fallback retry", async () => {
 // 10. Existing output limits and configuration behaviour remain intact.
 test("the support instruction is wired with the output cap and abort signal", () => {
   const controller = new AbortController();
-  const config = buildGenerationConfig(
+  const options = buildRequestOptions(
     SUPPORT_SYSTEM_INSTRUCTION,
     controller.signal
   );
 
-  assert.equal(config.systemInstruction, SUPPORT_SYSTEM_INSTRUCTION);
-  assert.equal(config.abortSignal, controller.signal);
-  assert.equal(config.maxOutputTokens, MAX_OUTPUT_TOKENS);
+  assert.equal(options.systemMessage.content, SUPPORT_SYSTEM_INSTRUCTION);
+  assert.equal(options.signal, controller.signal);
+  assert.equal(options.maxCompletionTokens, MAX_OUTPUT_TOKENS);
   assert.equal(MAX_OUTPUT_TOKENS, 1024);
 });
 

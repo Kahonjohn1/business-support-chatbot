@@ -27,7 +27,7 @@ export type SupportedMime =
   | "image/jpeg"
   | "image/webp";
 
-/** A validated file ready to be turned into Gemini request parts. */
+/** A validated file ready to be turned into provider request parts. */
 export interface PreparedFile {
   id: string;
   name: string;

@@ -1,14 +1,14 @@
-// Model-fallback and Gemini error-classification helpers.
+// Model-fallback and provider error-classification helpers.
 //
 // Kept dependency-free (no SDK / server-only imports) so the retry decision can
-// be unit tested directly. `src/lib/gemini.ts` wires these to the real client.
+// be unit tested directly. `src/lib/groq.ts` wires these to the real HTTP calls.
 
 /**
- * Reads the HTTP status from a thrown provider error. The GenAI SDK exposes it
- * on `.status` (public `ApiError`) and `.statusCode` (wrapped errors); network,
- * abort, and timeout failures carry neither.
+ * Reads the HTTP status from a thrown provider error. Groq's OpenAI-compatible
+ * API surfaces it on `.status` (and `.statusCode` for wrapped variants);
+ * network, abort, and timeout failures carry neither.
  */
-export function readGeminiErrorStatus(error: unknown): number | undefined {
+export function readProviderErrorStatus(error: unknown): number | undefined {
   if (typeof error !== "object" || error === null) {
     return undefined;
   }
@@ -22,9 +22,8 @@ export function readGeminiErrorStatus(error: unknown): number | undefined {
 }
 
 /**
- * True for client cancellation or client-side timeouts, whether raised by fetch
- * (`AbortError` / `TimeoutError`) or wrapped by the GenAI SDK
- * (`APIUserAbortError` / `APIConnectionTimeoutError`).
+ * True for client cancellation or client-side timeouts, whether raised by
+ * fetch (`AbortError` / `TimeoutError`) or by a wrapping SDK layer.
  */
 export function isAbortError(error: unknown): boolean {
   return error instanceof Error && /abort|timeout/i.test(error.name);
@@ -44,11 +43,11 @@ export function isAbortLike(error: unknown): boolean {
  * requests, authentication/permission errors, unprocessable payloads
  * (oversized or unsupported files), and cancellations/timeouts.
  */
-export function isRecoverableGeminiError(error: unknown): boolean {
+export function isRecoverableProviderError(error: unknown): boolean {
   if (isAbortError(error)) {
     return false;
   }
-  const status = readGeminiErrorStatus(error);
+  const status = readProviderErrorStatus(error);
   if (status === undefined) {
     return true;
   }
@@ -88,7 +87,7 @@ export interface RunWithModelFallbackOptions<T> {
   fallbackModel: string | null;
   /** Performs one model call, rejecting with the raw provider error on failure. */
   attempt: (model: string) => Promise<T>;
-  /** Overrides the recoverability check (defaults to {@link isRecoverableGeminiError}). */
+  /** Overrides the recoverability check (defaults to {@link isRecoverableProviderError}). */
   isRecoverable?: (error: unknown) => boolean;
   /**
    * Abort signal for the operation. When it is already aborted, the fallback is
@@ -110,7 +109,7 @@ export async function runWithModelFallback<T>(
   options: RunWithModelFallbackOptions<T>
 ): Promise<T> {
   const { primaryModel, fallbackModel, attempt } = options;
-  const isRecoverable = options.isRecoverable ?? isRecoverableGeminiError;
+  const isRecoverable = options.isRecoverable ?? isRecoverableProviderError;
 
   try {
     return await attempt(primaryModel);
@@ -122,7 +121,7 @@ export async function runWithModelFallback<T>(
     options.onFallback?.({
       failedModel: primaryModel,
       nextModel: fallbackModel,
-      status: readGeminiErrorStatus(error),
+      status: readProviderErrorStatus(error),
     });
     return attempt(fallbackModel);
   }

@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 
 import {
   isAbortError,
-  isRecoverableGeminiError,
-  readGeminiErrorStatus,
+  isRecoverableProviderError,
+  readProviderErrorStatus,
   resolveFallbackModel,
   runWithModelFallback,
-} from "../src/lib/geminiFallback.ts";
+} from "../src/lib/groqFallback.ts";
 
-const PRIMARY = "gemini-3.8-flash";
-const FALLBACK = "gemini-3.7-flash";
+const PRIMARY = "llama-3.3-70b-versatile";
+const FALLBACK = "llama-3.1-8b-instant";
 
 function providerError(status: number): Error {
   const error = new Error(`provider failed with status ${status}`);
@@ -53,43 +53,43 @@ test("resolveFallbackModel rejects missing, blank, and duplicate values", () => 
   assert.equal(resolveFallbackModel(PRIMARY, ` ${PRIMARY} `), null);
 });
 
-test("readGeminiErrorStatus reads status and statusCode", () => {
-  assert.equal(readGeminiErrorStatus(providerError(503)), 503);
+test("readProviderErrorStatus reads status and statusCode", () => {
+  assert.equal(readProviderErrorStatus(providerError(503)), 503);
   assert.equal(
-    readGeminiErrorStatus({ statusCode: 429 } as unknown),
+    readProviderErrorStatus({ statusCode: 429 } as unknown),
     429
   );
-  assert.equal(readGeminiErrorStatus(new Error("network")), undefined);
-  assert.equal(readGeminiErrorStatus(undefined), undefined);
+  assert.equal(readProviderErrorStatus(new Error("network")), undefined);
+  assert.equal(readProviderErrorStatus(undefined), undefined);
 });
 
-test("isRecoverableGeminiError accepts transient/model failures", () => {
+test("isRecoverableProviderError accepts transient/model failures", () => {
   for (const status of [408, 404, 409, 429, 500, 502, 503, 504]) {
     assert.equal(
-      isRecoverableGeminiError(providerError(status)),
+      isRecoverableProviderError(providerError(status)),
       true,
       `status ${status} should be recoverable`
     );
   }
-  assert.equal(isRecoverableGeminiError(new Error("network down")), true);
+  assert.equal(isRecoverableProviderError(new Error("network down")), true);
 });
 
-test("isRecoverableGeminiError rejects invalid, auth, and payload errors", () => {
+test("isRecoverableProviderError rejects invalid, auth, and payload errors", () => {
   for (const status of [400, 401, 403, 413, 415, 422]) {
     assert.equal(
-      isRecoverableGeminiError(providerError(status)),
+      isRecoverableProviderError(providerError(status)),
       false,
       `status ${status} should not be recoverable`
     );
   }
 });
 
-test("isRecoverableGeminiError rejects cancellations and timeouts", () => {
-  assert.equal(isRecoverableGeminiError(namedError("AbortError")), false);
-  assert.equal(isRecoverableGeminiError(namedError("TimeoutError")), false);
-  assert.equal(isRecoverableGeminiError(namedError("APIUserAbortError")), false);
+test("isRecoverableProviderError rejects cancellations and timeouts", () => {
+  assert.equal(isRecoverableProviderError(namedError("AbortError")), false);
+  assert.equal(isRecoverableProviderError(namedError("TimeoutError")), false);
+  assert.equal(isRecoverableProviderError(namedError("APIUserAbortError")), false);
   assert.equal(
-    isRecoverableGeminiError(namedError("APIConnectionTimeoutError")),
+    isRecoverableProviderError(namedError("APIConnectionTimeoutError")),
     false
   );
 });
@@ -160,7 +160,7 @@ test("both models failing rejects with a single error and stops after two calls"
       fallbackModel: FALLBACK,
       attempt,
     }),
-    (error: unknown) => readGeminiErrorStatus(error) === 503
+    (error: unknown) => readProviderErrorStatus(error) === 503
   );
   assert.deepEqual(calls, [PRIMARY, FALLBACK]);
 });
@@ -179,7 +179,7 @@ test("invalid request errors do not trigger the fallback", async () => {
       attempt,
       onFallback: () => assert.fail("fallback must not be announced"),
     }),
-    (error: unknown) => readGeminiErrorStatus(error) === 400
+    (error: unknown) => readProviderErrorStatus(error) === 400
   );
   assert.deepEqual(calls, [PRIMARY]);
 });

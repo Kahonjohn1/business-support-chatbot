@@ -14,12 +14,13 @@ import { declaredBodyTooLarge, readBodyWithLimit } from "@/lib/requestBody";
 import { createRateLimiter } from "@/lib/rateLimit";
 import { prepareFile, type PreparedFile } from "@/lib/fileProcessing";
 import {
-  GeminiConfigError,
-  GeminiProviderError,
-  GeminiTimeoutError,
+  GroqAttachmentError,
+  GroqConfigError,
+  GroqProviderError,
+  GroqTimeoutError,
   generateAssistantReply,
-  type GeminiRequestMessage,
-} from "@/lib/gemini";
+  type GroqRequestMessage,
+} from "@/lib/groq";
 
 // Stateless chat endpoint. Conversation history lives in the client store, so
 // the request carries only the context needed for this turn. Text-only turns may
@@ -252,7 +253,7 @@ export async function POST(request: Request): Promise<Response> {
     prepared.set(id, result.file);
   }
 
-  const geminiMessages: GeminiRequestMessage[] = messages.map((message) => ({
+  const groqMessages: GroqRequestMessage[] = messages.map((message) => ({
     role: message.role,
     content: message.content,
     ...(message.attachmentIds.length > 0
@@ -270,23 +271,27 @@ export async function POST(request: Request): Promise<Response> {
     console.log(JSON.stringify({level:"info",reqId,phase:"api.prep",durMs:tPrep - tReq0,ctx:{msgCount:messages.length,totalChars:totalCharsApi,attachCount:referencedIds.length,totalAttachBytes:totalBytes}}));
   } catch {}
   try {
-    const reply = await generateAssistantReply(geminiMessages, request.signal);
+    const reply = await generateAssistantReply(groqMessages, request.signal);
     try { console.log(JSON.stringify({level:"info",reqId,phase:"api.total.ok",totalMs:Date.now()-tReq0})); } catch {}
     return Response.json({ message: { role: "assistant", content: reply } });
   } catch (error) {
     try { console.log(JSON.stringify({level:"error",reqId,phase:"api.total.fail",totalMs:Date.now()-tReq0})); } catch {}
-    if (error instanceof GeminiConfigError) {
+    if (error instanceof GroqAttachmentError) {
+      console.error("[api/chat] attachment error:", error.message);
+      return errorResponse(400, error.message);
+    }
+    if (error instanceof GroqConfigError) {
       console.error("[api/chat] configuration error:", error.message);
       return errorResponse(500, "The chat service is not configured.");
     }
-    if (error instanceof GeminiTimeoutError) {
+    if (error instanceof GroqTimeoutError) {
       console.error("[api/chat] timeout:", error.message);
       return errorResponse(
         504,
         "The assistant took too long to respond. Please try again."
       );
     }
-    if (error instanceof GeminiProviderError) {
+    if (error instanceof GroqProviderError) {
       console.error("[api/chat] provider error:", error.message);
       return errorResponse(
         502,
