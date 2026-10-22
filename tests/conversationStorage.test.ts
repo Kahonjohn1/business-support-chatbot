@@ -200,6 +200,51 @@ test("a failing storage write never breaks saving", () => {
   assert.equal(loadConversation(), null);
 });
 
+test("sources and the ungrounded flag survive a round trip", () => {
+  installSessionStorage();
+  const messages = [
+    message({
+      id: "m1",
+      role: "assistant",
+      content: "Marque Contact is an NFC card.",
+      sources: [
+        { id: "KB-004", title: "Marque Contact Overview", section: "Core Offering" },
+      ],
+      insufficientEvidence: true,
+    }),
+  ];
+
+  saveConversation(messages);
+
+  const restored = loadConversation();
+  assert.ok(restored);
+  assert.deepEqual(restored[0].sources, [
+    { id: "KB-004", title: "Marque Contact Overview", section: "Core Offering" },
+  ]);
+  assert.equal(restored[0].insufficientEvidence, true);
+});
+
+test("a corrupted stored citation is dropped instead of shown", () => {
+  installSessionStorage({
+    [STORAGE_KEY]: JSON.stringify({
+      version: 1,
+      messages: [
+        {
+          id: "m1",
+          role: "assistant",
+          content: "answer",
+          createdAt: "2026-10-19T10:00:00.000Z",
+          sources: [{ id: "KB-004" }, { id: "KB-007", title: "Support" }],
+        },
+      ],
+    }),
+  });
+
+  const restored = loadConversation();
+  assert.ok(restored);
+  assert.deepEqual(restored[0].sources, [{ id: "KB-007", title: "Support" }]);
+});
+
 test("the conversation hook restores and saves through conversationStorage", () => {
   const hookSource = readFileSync(
     new URL("../src/hooks/useChatMessages.ts", import.meta.url),

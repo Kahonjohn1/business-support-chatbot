@@ -182,7 +182,8 @@ function planAttachments(messages: GroqRequestMessage[]): AttachmentPlan {
 function buildGroqMessages(
   messages: GroqRequestMessage[],
   plan: AttachmentPlan,
-  systemMessage: { role: "system"; content: string }
+  systemMessage: { role: "system"; content: string },
+  referenceMaterial?: string
 ): GroqMessage[] {
   const turns: GroqMessage[] = messages.map((message, index) => {
     const parts: GroqContentPart[] = [];
@@ -225,6 +226,14 @@ function buildGroqMessages(
     return { role: message.role === "assistant" ? "assistant" : "user", content };
   });
 
+  // Retrieved evidence is delivered as its own turn, immediately before the
+  // user's question, so the model reads it as quoted data rather than as an
+  // instruction and the question stays last.
+  if (referenceMaterial) {
+    const insertAt = Math.max(turns.length - 1, 0);
+    turns.splice(insertAt, 0, { role: "user", content: referenceMaterial });
+  }
+
   return [systemMessage, ...turns];
 }
 
@@ -237,13 +246,28 @@ function withTimeout(signal?: AbortSignal): AbortSignal {
 }
 
 /**
+ * Optional grounding material for one generation.
+ *
+ * `referenceMaterial` holds the retrieved knowledge-base passages and
+ * `groundingInstruction` the rules the model must follow when using them.
+ * Both are empty for ordinary turns, which keeps the previous behaviour.
+ */
+export interface GroqGroundingOptions {
+  /** Retrieved passages, already delimited as untrusted reference data. */
+  referenceMaterial?: string;
+  /** Extra system-prompt rules for answering from the reference material. */
+  groundingInstruction?: string;
+}
+
+/**
  * Sends the conversation context to Groq and returns a validated, non-empty
  * assistant reply. Provider failures are wrapped so they can be mapped to safe
  * HTTP responses without leaking internals.
  */
 export async function generateAssistantReply(
   messages: GroqRequestMessage[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  grounding?: GroqGroundingOptions
 ): Promise<string> {
   const apiKey = process.env.GROQ_API_KEY?.trim();
   if (!apiKey) {
@@ -265,15 +289,22 @@ export async function generateAssistantReply(
     process.env.GROQ_MAX_OUTPUT_TOKENS
   );
 
+  // The grounding rules are appended to the system instruction only when there
+  // is evidence to ground on, so ordinary turns keep the previous prompt.
+  const systemInstruction = grounding?.groundingInstruction
+    ? `${SUPPORT_SYSTEM_INSTRUCTION}\n\n${grounding.groundingInstruction}`
+    : SUPPORT_SYSTEM_INSTRUCTION;
+
   const requestOptions = buildRequestOptions(
-    SUPPORT_SYSTEM_INSTRUCTION,
+    systemInstruction,
     signal,
     maxOutputTokens
   );
   const groqMessages = buildGroqMessages(
     messages,
     plan,
-    requestOptions.systemMessage
+    requestOptions.systemMessage,
+    grounding?.referenceMaterial
   );
 
   const start = Date.now();

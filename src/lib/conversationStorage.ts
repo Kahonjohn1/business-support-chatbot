@@ -1,4 +1,5 @@
 import type { Attachment, ChatMessage, MessageRole } from "@/types/chat";
+import { parseSourceList } from "@/lib/knowledge/sources";
 
 // Session-scoped copy of the active conversation so an accidental page reload
 // resumes where the user left off instead of wiping the chat. Only serialisable
@@ -89,6 +90,17 @@ function parseMessage(value: unknown): ChatMessage | null {
     message.attachments = attachments;
   }
 
+  // Source metadata is validated on restore: unusable entries are dropped, so
+  // a corrupted copy can never put a fabricated citation on screen.
+  const sources = parseSourceList(candidate.sources);
+  if (sources.length > 0) {
+    message.sources = sources;
+  }
+
+  if (candidate.insufficientEvidence === true) {
+    message.insufficientEvidence = true;
+  }
+
   return message;
 }
 
@@ -109,6 +121,16 @@ function serializeMessage(message: ChatMessage): Record<string, unknown> {
       kind: attachment.kind,
       contentAvailable: false,
     }));
+  }
+  if (message.sources && message.sources.length > 0) {
+    stored.sources = message.sources.map((source) => ({
+      id: source.id,
+      title: source.title,
+      ...(source.section ? { section: source.section } : {}),
+    }));
+  }
+  if (message.insufficientEvidence) {
+    stored.insufficientEvidence = true;
   }
   return stored;
 }

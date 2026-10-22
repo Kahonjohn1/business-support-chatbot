@@ -21,6 +21,15 @@ import {
   generateAssistantReply,
   type GroqRequestMessage,
 } from "@/lib/groq";
+import { retrieveKnowledge } from "@/lib/knowledge/knowledgeService";
+import type { GroundingPassage } from "@/lib/knowledge/retrieval";
+import {
+  buildGroundedAnswer,
+  buildReferenceMaterial,
+  GROUNDING_INSTRUCTION,
+  isCompanyQuestion,
+  NO_EVIDENCE_INSTRUCTION,
+} from "@/lib/knowledge/grounding";
 
 // Stateless chat endpoint. Conversation history lives in the client store, so
 // the request carries only the context needed for this turn. Text-only turns may
@@ -270,10 +279,46 @@ export async function POST(request: Request): Promise<Response> {
     const totalCharsApi = messages.reduce((n,m)=>n + (m.content?.trim().length||0), 0);
     console.log(JSON.stringify({level:"info",reqId,phase:"api.prep",durMs:tPrep - tReq0,ctx:{msgCount:messages.length,totalChars:totalCharsApi,attachCount:referencedIds.length,totalAttachBytes:totalBytes}}));
   } catch {}
+
+  // Grounded retrieval runs only for questions about Marque Technologies, its
+  // services, or Marque Contact. General technical and attachment questions
+  // keep working exactly as before, without the company documents.
+  const query = lastMessage.content;
+  const companyQuestion = isCompanyQuestion(query);
+  let passages: GroundingPassage[] = [];
+  let referenceMaterial: string | undefined;
+  let groundingInstruction: string | undefined;
+
   try {
-    const reply = await generateAssistantReply(groqMessages, request.signal);
+    if (companyQuestion) {
+      const retrieval = await retrieveKnowledge(query);
+      passages = retrieval.passages;
+      if (passages.length > 0) {
+        referenceMaterial = buildReferenceMaterial(passages);
+        groundingInstruction = GROUNDING_INSTRUCTION;
+      } else {
+        groundingInstruction = NO_EVIDENCE_INSTRUCTION;
+      }
+      // Counts only: neither the question nor the passages are logged.
+      try { console.log(JSON.stringify({level:"info",reqId,phase:"api.retrieval",passageCount:passages.length,docCount:retrieval.documentIds.length})); } catch {}
+    }
+
+    const reply = await generateAssistantReply(groqMessages, request.signal, {
+      referenceMaterial,
+      groundingInstruction,
+    });
+    const grounded = buildGroundedAnswer(reply, passages, query, companyQuestion);
     try { console.log(JSON.stringify({level:"info",reqId,phase:"api.total.ok",totalMs:Date.now()-tReq0})); } catch {}
-    return Response.json({ message: { role: "assistant", content: reply } });
+    return Response.json({
+      message: {
+        role: "assistant",
+        content: grounded.content,
+        ...(grounded.sources.length > 0 ? { sources: grounded.sources } : {}),
+        ...(grounded.insufficientEvidence
+          ? { insufficientEvidence: true }
+          : {}),
+      },
+    });
   } catch (error) {
     try { console.log(JSON.stringify({level:"error",reqId,phase:"api.total.fail",totalMs:Date.now()-tReq0})); } catch {}
     if (error instanceof GroqAttachmentError) {

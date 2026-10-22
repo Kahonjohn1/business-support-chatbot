@@ -16,6 +16,7 @@ import { useChatMessages } from "@/hooks/useChatMessages";
 import { createMessageId } from "@/lib/chatMessages";
 import { MAX_ATTACHMENTS } from "@/lib/chatLimits";
 import { buildRequestContext } from "@/lib/requestContext";
+import { parseSourceList } from "@/lib/knowledge/sources";
 import {
   createAttachmentFromFile,
   releaseAttachmentFiles,
@@ -142,7 +143,11 @@ export const BusinessSupportChat: React.FC = () => {
         }
 
         const data = (await response.json()) as {
-          message?: { content?: unknown };
+          message?: {
+            content?: unknown;
+            sources?: unknown;
+            insufficientEvidence?: unknown;
+          };
         };
         const rawContent = data.message?.content;
         const content = typeof rawContent === "string" ? rawContent.trim() : "";
@@ -152,6 +157,12 @@ export const BusinessSupportChat: React.FC = () => {
             true
           );
         }
+
+        // Source metadata is validated before it reaches the interface: an
+        // unusable or malformed entry is dropped rather than displayed.
+        const sources = parseSourceList(data.message?.sources);
+        const insufficientEvidence =
+          data.message?.insufficientEvidence === true;
 
         // Ignore the result if the request was aborted or the conversation was
         // reset meanwhile.
@@ -170,6 +181,8 @@ export const BusinessSupportChat: React.FC = () => {
           role: "assistant",
           content,
           createdAt: new Date().toISOString(),
+          ...(sources.length > 0 ? { sources } : {}),
+          ...(insufficientEvidence ? { insufficientEvidence: true } : {}),
         };
         appendMessage(assistantMessage);
 

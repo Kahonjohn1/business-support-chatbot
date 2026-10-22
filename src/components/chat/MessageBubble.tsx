@@ -10,6 +10,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   const isUser = message.role === "user";
   const attachments = message.attachments ?? [];
   const hasContent = message.content.trim().length > 0;
+  // Only well-formed source metadata is rendered; anything else is ignored.
+  const sources = useMemo(
+    () => (message.sources ?? []).filter((source) => source.id && source.title),
+    [message.sources]
+  );
 
   const formattedTime = useMemo(() => {
     try {
@@ -66,6 +71,37 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Documents consulted for this answer */}
+      {!isUser && sources.length > 0 && (
+        <div className="mt-1.5 max-w-[85%] sm:max-w-[75%] md:max-w-[70%]">
+          <p className="text-[11px] font-medium text-muted-foreground">
+            Sources consulted
+          </p>
+          <ul
+            className="mt-0.5 space-y-0.5 text-[11px] text-muted-foreground"
+            aria-label="Sources consulted"
+          >
+            {sources.map((source) => (
+              <li key={source.id}>
+                <span className="font-medium text-foreground">
+                  {source.title}
+                </span>
+                {source.section && (
+                  <span> — {source.section}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* The approved documents do not cover the requested detail */}
+      {!isUser && message.insufficientEvidence && (
+        <p className="mt-1 px-1 text-[11px] italic text-muted-foreground">
+          The approved knowledge base does not specify this detail.
+        </p>
       )}
 
       {/* Default-analysis note for file-only turns */}
