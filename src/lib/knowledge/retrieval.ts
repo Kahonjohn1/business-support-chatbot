@@ -130,6 +130,41 @@ export function tokenize(text: string): string[] {
     .map(stem);
 }
 
+/**
+ * Words that describe how the user wants the answer ("explain it", "using the
+ * approved knowledge base", "show your sources") instead of what the answer is
+ * about.
+ *
+ * No document can match them, so counting them as question content makes an
+ * answerable question look unrelated: a passage would have to match words the
+ * question never asked about. They are therefore ignored in the *question*
+ * only. The documents keep their own wording, so a document that really talks
+ * about sources is still reachable.
+ */
+const TASK_FRAMING_TERMS: ReadonlySet<string> = new Set([
+  "approved",
+  "base",
+  "cite",
+  "citation",
+  "explain",
+  "explaining",
+  "explanation",
+  "knowledge",
+  "reference",
+  "show",
+  "showing",
+  "source",
+]);
+
+/**
+ * Splits a question into the terms that describe what it is about. Task
+ * framing ("explain", "show your sources") is dropped; everything else is
+ * matched against the documents.
+ */
+export function tokenizeQuery(text: string): string[] {
+  return tokenize(text).filter((token) => !TASK_FRAMING_TERMS.has(token));
+}
+
 function unique(tokens: readonly string[]): string[] {
   return [...new Set(tokens)];
 }
@@ -182,7 +217,7 @@ export function rankChunks(
   chunks: readonly KnowledgeChunk[],
   query: string
 ): RankedChunk[] {
-  const queryTokens = unique(tokenize(query));
+  const queryTokens = unique(tokenizeQuery(query));
   if (queryTokens.length === 0 || chunks.length === 0) return [];
 
   const fields: ChunkFields[] = chunks.map((chunk) => ({
@@ -295,23 +330,32 @@ export function selectPassages(
   const maxChunksPerDocument =
     options.maxChunksPerDocument ?? MAX_CHUNKS_PER_DOCUMENT;
 
-  const queryTokenCount = unique(tokenize(query)).length;
-  const best = ranked[0];
+  const queryTokenCount = unique(tokenizeQuery(query)).length;
+
+  // The gate asks whether *any* passage covers the question well enough. It
+  // must not be decided by whichever passage happens to score highest: a
+  // passage can score highly on one strong title match while another passage
+  // is the one that actually covers what was asked ("the four stages of the
+  // project delivery process" is covered by the numbered list, not by the
+  // document's boundaries note).
+  const covering = ranked.reduce((best, item) =>
+    item.termCoverage > best.termCoverage ? item : best
+  );
 
   if (queryTokenCount >= 2) {
-    if (best.matchedTokens.length < minMatchedTokens) return [];
+    if (covering.matchedTokens.length < minMatchedTokens) return [];
   } else if (queryTokenCount === 1) {
-    const token = best.matchedTokens[0];
-    const weight = token ? best.termWeights.get(token) ?? 0 : 0;
+    const token = covering.matchedTokens[0];
+    const weight = token ? covering.termWeights.get(token) ?? 0 : 0;
     if (!token || weight < minSingleTokenIdf) return [];
   }
 
   // A passage has to cover enough of the question, not just a couple of words:
   // that keeps unrelated questions from pulling company documents in.
-  if (best.coverage < minCoverage) return [];
-  if (best.termCoverage < minTermCoverage) return [];
+  if (covering.coverage < minCoverage) return [];
+  if (covering.termCoverage < minTermCoverage) return [];
 
-  const floor = best.score * relativeFloor;
+  const floor = ranked[0].score * relativeFloor;
   const perDocument = new Map<string, RankedChunk[]>();
   for (const item of ranked) {
     if (item.score < floor) break;
@@ -321,6 +365,17 @@ export function selectPassages(
       continue;
     }
     if (list.length < maxChunksPerDocument) list.push(item);
+  }
+
+  // The passage that justified the gate is always part of the evidence, even
+  // when it scores below the floor.
+  if (!perDocument.get(covering.chunk.documentId)?.includes(covering)) {
+    const list = perDocument.get(covering.chunk.documentId);
+    if (!list) {
+      perDocument.set(covering.chunk.documentId, [covering]);
+    } else if (list.length < maxChunksPerDocument) {
+      list.push(covering);
+    }
   }
 
   const documents = [...perDocument.entries()]
