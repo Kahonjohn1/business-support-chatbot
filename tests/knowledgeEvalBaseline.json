@@ -1,0 +1,349 @@
+{
+  "recordedAt": "2026-10-22",
+  "description": "Baseline of the lexical retriever over tests/knowledgeEvalCases.ts. Regenerate with: npm run eval:retrieval:record",
+  "metrics": {
+    "precisionAt1": 0.8529,
+    "recallAt3": 0.8823,
+    "sectionAccuracy": 0.8787,
+    "falsePositives": 0
+  },
+  "cases": {
+    "exact-aaas": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-002"
+      ]
+    },
+    "exact-saas-platform": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-002"
+      ]
+    },
+    "exact-co-design-stage": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-003",
+        "KB-001"
+      ]
+    },
+    "exact-launch-scale-stage": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-003",
+        "KB-001"
+      ]
+    },
+    "exact-stated-benefits": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-006"
+      ]
+    },
+    "exact-satisfaction-guarantee": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-007"
+      ]
+    },
+    "exact-nfc-how-it-works": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-005",
+        "KB-004",
+        "KB-006"
+      ]
+    },
+    "exact-response-rule": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-007"
+      ]
+    },
+    "para-region-focus": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-001"
+      ]
+    },
+    "para-price-quote": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-007",
+        "KB-006",
+        "KB-004"
+      ]
+    },
+    "para-branding": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-006",
+        "KB-004"
+      ]
+    },
+    "para-turnaround": {
+      "hit": false,
+      "top1": false,
+      "section": false,
+      "documents": []
+    },
+    "para-phone-compatibility": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-005"
+      ]
+    },
+    "para-company-type": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-001",
+        "KB-005"
+      ]
+    },
+    "para-mobile-platforms": {
+      "hit": false,
+      "top1": false,
+      "section": false,
+      "documents": []
+    },
+    "svc-overview": {
+      "hit": true,
+      "top1": true,
+      "section": null,
+      "documents": [
+        "KB-002",
+        "KB-004",
+        "KB-001"
+      ]
+    },
+    "svc-web-performance": {
+      "hit": false,
+      "top1": false,
+      "section": false,
+      "documents": []
+    },
+    "svc-chatbot": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-002"
+      ]
+    },
+    "svc-ai-automation": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-002"
+      ]
+    },
+    "svc-recurring-revenue": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-002"
+      ]
+    },
+    "mc-what-is": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-004",
+        "KB-005",
+        "KB-006"
+      ]
+    },
+    "mc-purpose": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-005",
+        "KB-004"
+      ]
+    },
+    "mc-paper-cards": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-006",
+        "KB-004"
+      ]
+    },
+    "mc-technical-support": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-006",
+        "KB-007",
+        "KB-004"
+      ]
+    },
+    "mc-customisation": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-004",
+        "KB-006"
+      ]
+    },
+    "del-four-stages-regression": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-003",
+        "KB-001"
+      ]
+    },
+    "del-how": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-003",
+        "KB-007"
+      ]
+    },
+    "del-discover": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-003",
+        "KB-001"
+      ]
+    },
+    "del-build-and-test": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-003",
+        "KB-001"
+      ]
+    },
+    "del-duration": {
+      "hit": false,
+      "top1": false,
+      "section": false,
+      "documents": []
+    },
+    "price-cost": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-007",
+        "KB-006",
+        "KB-004"
+      ]
+    },
+    "price-exact-amount": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-007"
+      ]
+    },
+    "price-refund": {
+      "hit": true,
+      "top1": false,
+      "section": true,
+      "documents": [
+        "KB-001",
+        "KB-004",
+        "KB-007"
+      ]
+    },
+    "price-tailored": {
+      "hit": true,
+      "top1": true,
+      "section": true,
+      "documents": [
+        "KB-007"
+      ]
+    },
+    "unrel-python-regression": {
+      "hit": false,
+      "top1": false,
+      "section": null,
+      "documents": []
+    },
+    "unrel-weather": {
+      "hit": false,
+      "top1": false,
+      "section": null,
+      "documents": []
+    },
+    "unrel-recipe": {
+      "hit": false,
+      "top1": false,
+      "section": null,
+      "documents": []
+    },
+    "unrel-javascript-error": {
+      "hit": false,
+      "top1": false,
+      "section": null,
+      "documents": []
+    },
+    "tech-typescript-setup": {
+      "hit": false,
+      "top1": false,
+      "section": null,
+      "documents": []
+    },
+    "tech-sql-nosql": {
+      "hit": false,
+      "top1": false,
+      "section": null,
+      "documents": []
+    },
+    "tech-css-flexbox": {
+      "hit": false,
+      "top1": false,
+      "section": null,
+      "documents": []
+    },
+    "tech-http-404": {
+      "hit": false,
+      "top1": false,
+      "section": null,
+      "documents": []
+    }
+  }
+}

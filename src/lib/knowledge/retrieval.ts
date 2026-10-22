@@ -98,6 +98,12 @@ const TERM_ALIASES: Readonly<Record<string, string>> = {
   deliver: "deliver",
   delivery: "deliver",
   doc: "document",
+  // "Policy" is the word the documents use for the conditions the company
+  // must not invent: KB-001 lists "company policies" and KB-004 a "warranty
+  // policy", while KB-007 states the refund, warranty, and guarantee
+  // conditions. A customer asking about a refund is asking about a policy, so
+  // both words lead to the same evidence.
+  refund: "policy",
 };
 
 /**
