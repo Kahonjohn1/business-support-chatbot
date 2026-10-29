@@ -9,6 +9,7 @@ import {
   DEFAULT_MODEL,
   VISION_MODEL,
   MAX_IMAGES_PER_REQUEST,
+  supportsToolCalling,
 } from "../src/lib/groqConfig.ts";
 
 test("request options cap output tokens", () => {
@@ -63,4 +64,13 @@ test("the configured provider models and image cap match the Groq docs", () => {
   assert.equal(DEFAULT_MODEL, "openai/gpt-oss-120b");
   assert.equal(VISION_MODEL, "qwen/qwen3.8-27b");
   assert.equal(MAX_IMAGES_PER_REQUEST, 3);
+});
+
+test("only documented models are treated as tool-capable", () => {
+  assert.equal(supportsToolCalling(DEFAULT_MODEL), true);
+  assert.equal(supportsToolCalling(VISION_MODEL), true);
+  assert.equal(supportsToolCalling("openai/gpt-oss-20b"), true);
+  assert.equal(supportsToolCalling("  openai/gpt-oss-20b  "), true);
+  assert.equal(supportsToolCalling("unknown/model"), false);
+  assert.equal(supportsToolCalling(""), false);
 });

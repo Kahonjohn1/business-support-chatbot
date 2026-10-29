@@ -8,6 +8,7 @@ import {
   VISION_MODEL,
   buildRequestOptions,
   resolveMaxOutputTokens,
+  supportsToolCalling,
 } from "@/lib/groqConfig";
 import {
   isAbortError,
@@ -19,6 +20,21 @@ import {
 import { SUPPORT_SYSTEM_INSTRUCTION } from "@/lib/systemInstruction";
 import { CSV_MIME, DOCX_MIME, PDF_MIME, TEXT_MIME } from "@/lib/fileProcessing";
 import type { PreparedFile } from "@/lib/fileProcessing";
+import {
+  MAX_TOOL_CALLS,
+  MAX_TOOL_ITERATIONS,
+  parseToolCalls,
+  runToolLoop,
+  type ToolCall,
+} from "@/lib/toolCalling";
+import {
+  GET_PROJECT_STATUS_TOOL_NAME,
+  NO_TOOL_USE_INSTRUCTION,
+  REGISTERED_TOOLS,
+  TOOL_USE_INSTRUCTION,
+  ensureDemoDataDisclosure,
+  executeRegisteredTool,
+} from "@/tools/projectStatusTool";
 
 // Server-only Groq chat-completions service (OpenAI-compatible HTTP API). The
 // API key and model never reach the client.
@@ -80,8 +96,11 @@ type GroqContentPart =
   | { type: "image_url"; image_url: { url: string } };
 
 interface GroqMessage {
-  role: "system" | "user" | "assistant";
-  content: string | GroqContentPart[];
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | GroqContentPart[] | null;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+  name?: string;
 }
 
 function isImageFile(file: PreparedFile): boolean {
@@ -321,12 +340,36 @@ export async function generateAssistantReply(
   }, 0);
   try { console.log(JSON.stringify({level:"info",reqId,phase:"groq.start",model,ctx:{msgCount:ctxMsgCount,totalChars:ctxTotalChars,attachCount:ctxAttachCount,attachBytes:ctxAttachBytes}})); } catch {}
 
-  // One model call. Reuses the same messages, abort signal, and output cap for
-  // the primary and fallback, so limits and cancellation are identical for both.
+  // One model attempt. Tool definitions are only offered to documented
+  // tool-capable models; every request in the loop reuses the same abort
+  // signal, timeout, and output cap as the original single-call path.
   const attempt = async (modelName: string): Promise<string> => {
     const t0 = Date.now();
-    try {
-      console.log(JSON.stringify({level:"info",reqId,phase:"groq.attempt.start",model:modelName}));
+    const toolEnabled = supportsToolCalling(modelName);
+    const attemptMessages: GroqMessage[] = [
+      {
+        role: "system",
+        content: `${systemInstruction}\n\n${
+          toolEnabled ? TOOL_USE_INSTRUCTION : NO_TOOL_USE_INSTRUCTION
+        }`,
+      },
+      ...groqMessages.slice(1),
+    ];
+
+    const requestCompletion = async (
+      messagesToSend: GroqMessage[],
+      toolChoice?: "auto" | "none"
+    ): Promise<GroqMessage> => {
+      const body: Record<string, unknown> = {
+        model: modelName,
+        messages: messagesToSend,
+        max_completion_tokens: requestOptions.maxCompletionTokens,
+      };
+      if (toolEnabled) {
+        body.tools = REGISTERED_TOOLS;
+        body.tool_choice = toolChoice ?? "auto";
+      }
+
       const response = await fetch(API_URL, {
         method: "POST",
         headers: {
@@ -334,11 +377,7 @@ export async function generateAssistantReply(
           "Content-Type": "application/json",
         },
         signal: withTimeout(signal),
-        body: JSON.stringify({
-          model: modelName,
-          messages: groqMessages,
-          max_completion_tokens: requestOptions.maxCompletionTokens,
-        }),
+        body: JSON.stringify(body),
       });
       if (!response.ok) {
         let providerMessage = "provider request failed";
@@ -354,16 +393,86 @@ export async function generateAssistantReply(
         throw new GroqHttpError(providerMessage, response.status);
       }
       const payload = (await response.json()) as {
-        choices?: Array<{ message?: { content?: unknown } }>;
+        choices?: Array<{
+          message?: { content?: unknown; tool_calls?: unknown };
+        }>;
       };
-      const content = payload?.choices?.[0]?.message?.content;
-      const dur = Date.now() - t0;
-      if (typeof content !== "string" || !content.trim()) {
-        try { console.log(JSON.stringify({level:"warn",reqId,phase:"groq.attempt.empty",model:modelName,durMs:dur})); } catch {}
-        throw new GroqProviderError("The model returned an empty response.");
+      const message = payload?.choices?.[0]?.message;
+      const content =
+        typeof message?.content === "string" ? message.content : null;
+      const toolCalls = toolEnabled ? parseToolCalls(message?.tool_calls) : [];
+      return {
+        role: "assistant",
+        content,
+        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+      };
+    };
+
+    try {
+      console.log(JSON.stringify({level:"info",reqId,phase:"groq.attempt.start",model:modelName}));
+
+      let reply: string;
+      if (toolEnabled) {
+        const loopResult = await runToolLoop<GroqMessage>({
+          messages: attemptMessages,
+          tools: [...REGISTERED_TOOLS],
+          maxIterations: MAX_TOOL_ITERATIONS,
+          maxToolCalls: MAX_TOOL_CALLS,
+          callModel: async ({ messages: loopMessages, toolChoice }) => {
+            const assistantMessage = await requestCompletion(
+              loopMessages,
+              toolChoice
+            );
+            return {
+              content:
+                typeof assistantMessage.content === "string"
+                  ? assistantMessage.content
+                  : null,
+              toolCalls: assistantMessage.tool_calls ?? [],
+              assistantMessage,
+            };
+          },
+          executeTool: executeRegisteredTool,
+          createToolMessage: (toolMessage) => ({
+            role: "tool",
+            content: toolMessage.content,
+            tool_call_id: toolMessage.tool_call_id,
+            name: toolMessage.name,
+          }),
+          onToolResult: ({ iteration, toolName, ok }) => {
+            try {
+              console.log(JSON.stringify({
+                level: "info",
+                reqId,
+                phase: "groq.tool.result",
+                model: modelName,
+                iteration,
+                toolName,
+                ok,
+              }));
+            } catch {}
+          },
+        });
+        reply = loopResult.usedToolNames.includes(GET_PROJECT_STATUS_TOOL_NAME)
+          ? ensureDemoDataDisclosure(loopResult.content)
+          : loopResult.content;
+      } else {
+        const assistantMessage = await requestCompletion(attemptMessages);
+        const content =
+          typeof assistantMessage.content === "string"
+            ? assistantMessage.content.trim()
+            : "";
+        if (!content) {
+          const dur = Date.now() - t0;
+          try { console.log(JSON.stringify({level:"warn",reqId,phase:"groq.attempt.empty",model:modelName,durMs:dur})); } catch {}
+          throw new GroqProviderError("The model returned an empty response.");
+        }
+        reply = content;
       }
+
+      const dur = Date.now() - t0;
       try { console.log(JSON.stringify({level:"info",reqId,phase:"groq.attempt.ok",model:modelName,durMs:dur})); } catch {}
-      return content.trim();
+      return reply;
     } catch (e) {
       const dur = Date.now() - t0;
       const status = readProviderErrorStatus(e);

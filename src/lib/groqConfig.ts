@@ -14,6 +14,26 @@ export const VISION_MODEL = "qwen/qwen3.8-27b";
 // Hard per-request image cap enforced by the vision model (Groq vision docs).
 export const MAX_IMAGES_PER_REQUEST = 3;
 
+// Models documented by Groq as supporting local tool calling. Tools are only
+// offered to these exact model IDs, so an unrecognised GROQ_MODEL or
+// GROQ_FALLBACK_MODEL value is never silently treated as tool-capable.
+// Source: https://console.groq.com/docs/tool-use (Supported Models).
+export const TOOL_CALLING_MODELS: ReadonlySet<string> = new Set([
+  "openai/gpt-oss-20b",
+  "openai/gpt-oss-120b",
+  "openai/gpt-oss-safeguard-20b",
+  "qwen/qwen3.8-27b",
+  "minimaxai/minimax-m2.7",
+  "meta-models/muse-spark-open",
+  "llama-3.3-70b-versatile",
+  "llama-3.1-8b-instant",
+]);
+
+/** True only for a documented, explicitly allowlisted tool-calling model. */
+export function supportsToolCalling(model: string): boolean {
+  return TOOL_CALLING_MODELS.has(model.trim());
+}
+
 // Per-attempt deadline for a single provider call.
 export const REQUEST_TIMEOUT_MS = 30_000;
 
