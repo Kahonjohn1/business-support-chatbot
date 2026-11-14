@@ -28,12 +28,14 @@ import {
   type ToolCall,
 } from "@/lib/toolCalling";
 import {
+  REGISTERED_TOOLS,
+  executeRegisteredTool,
+} from "@/tools/registry";
+import {
   GET_PROJECT_STATUS_TOOL_NAME,
   NO_TOOL_USE_INSTRUCTION,
-  REGISTERED_TOOLS,
   TOOL_USE_INSTRUCTION,
   ensureDemoDataDisclosure,
-  executeRegisteredTool,
 } from "@/tools/projectStatusTool";
 
 // Server-only Groq chat-completions service (OpenAI-compatible HTTP API). The

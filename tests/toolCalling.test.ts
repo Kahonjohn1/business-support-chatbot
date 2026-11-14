@@ -13,8 +13,8 @@ import {
 import {
   GET_PROJECT_STATUS_TOOL,
   GET_PROJECT_STATUS_TOOL_NAME,
-  executeRegisteredTool,
 } from "../src/tools/projectStatusTool.ts";
+import { executeRegisteredTool } from "../src/tools/registry.ts";
 
 interface TestMessage {
   role: "system" | "user" | "assistant" | "tool";

@@ -5,10 +5,12 @@ import {
   DEMO_DATA_DISCLOSURE,
   GET_PROJECT_STATUS_TOOL,
   GET_PROJECT_STATUS_TOOL_NAME,
-  REGISTERED_TOOLS,
   ensureDemoDataDisclosure,
-  executeRegisteredTool,
 } from "../src/tools/projectStatusTool.ts";
+import {
+  REGISTERED_TOOLS,
+  executeRegisteredTool,
+} from "../src/tools/registry.ts";
 
 function parseContent(
   result: ReturnType<typeof executeRegisteredTool>

@@ -1,5 +1,5 @@
-// The single read-only tool exposed to the assistant. The registry is explicit:
-// only functions listed in REGISTERED_TOOLS can ever be executed.
+// The single read-only tool exposed to the assistant.
+// Tool registration and execution dispatch are handled by the central registry (@/tools/registry).
 
 import type {
   ToolDefinition,
@@ -29,9 +29,12 @@ export const GET_PROJECT_STATUS_TOOL: ToolDefinition = {
   },
 };
 
-export const REGISTERED_TOOLS: readonly ToolDefinition[] = [
-  GET_PROJECT_STATUS_TOOL,
-];
+export const GET_PROJECT_STATUS_METADATA = {
+  readOnly: true,
+  destructive: false,
+  requiresAuth: false,
+  idempotent: true,
+} as const;
 
 /** Appended to the system prompt only when the selected model supports tools. */
 export const TOOL_USE_INSTRUCTION = [
@@ -65,7 +68,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function parseProjectId(rawArguments: string): string {
+export function parseProjectId(rawArguments: string): string {
   if (
     typeof rawArguments !== "string" ||
     rawArguments.length > MAX_TOOL_ARGUMENT_CHARS
@@ -103,18 +106,12 @@ function parseProjectId(rawArguments: string): string {
 }
 
 /**
- * Executes a tool call against the explicit registry. Unknown tools and invalid
- * arguments are rejected without running anything; the safe error is returned
- * to the model as a tool result.
+ * Executes the get_project_status tool.
+ * Validates arguments and performs demo project lookup.
  */
-export function executeRegisteredTool(
-  toolName: string,
+export function executeGetProjectStatus(
   rawArguments: string
 ): ToolExecutionResult {
-  if (toolName !== GET_PROJECT_STATUS_TOOL_NAME) {
-    return { ok: false, error: "Unknown tool. No tool was executed." };
-  }
-
   try {
     const projectId = parseProjectId(rawArguments);
     const project = getProjectStatus(projectId);
