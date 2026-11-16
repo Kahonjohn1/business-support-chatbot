@@ -19,9 +19,9 @@ function parseContent(
   return JSON.parse(result.content) as Record<string, unknown>;
 }
 
-test("registry exposes only get_project_status", () => {
-  assert.equal(REGISTERED_TOOLS.length, 1);
-  assert.equal(REGISTERED_TOOLS[0], GET_PROJECT_STATUS_TOOL);
+test("registry exposes get_project_status", () => {
+  assert.ok(REGISTERED_TOOLS.length >= 1);
+  assert.ok(REGISTERED_TOOLS.some((t) => t.function.name === GET_PROJECT_STATUS_TOOL_NAME));
   assert.equal(GET_PROJECT_STATUS_TOOL.function.name, GET_PROJECT_STATUS_TOOL_NAME);
 });
 

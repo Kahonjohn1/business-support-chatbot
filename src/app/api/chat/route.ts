@@ -306,8 +306,14 @@ export async function POST(request: Request): Promise<Response> {
     const reply = await generateAssistantReply(groqMessages, request.signal, {
       referenceMaterial,
       groundingInstruction,
+      requestId: reqId,
     });
-    const grounded = buildGroundedAnswer(reply, passages, query, companyQuestion);
+    const grounded = buildGroundedAnswer(
+      reply.content,
+      passages,
+      query,
+      companyQuestion
+    );
     try { console.log(JSON.stringify({level:"info",reqId,phase:"api.total.ok",totalMs:Date.now()-tReq0})); } catch {}
     return Response.json({
       message: {
@@ -316,6 +322,9 @@ export async function POST(request: Request): Promise<Response> {
         ...(grounded.sources.length > 0 ? { sources: grounded.sources } : {}),
         ...(grounded.insufficientEvidence
           ? { insufficientEvidence: true }
+          : {}),
+        ...(reply.pendingApproval
+          ? { pendingApproval: reply.pendingApproval }
           : {}),
       },
     });

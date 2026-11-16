@@ -31,6 +31,7 @@ import {
   REGISTERED_TOOLS,
   executeRegisteredTool,
 } from "@/tools/registry";
+import type { AuthorizationContext } from "@/lib/permissions";
 import {
   GET_PROJECT_STATUS_TOOL_NAME,
   NO_TOOL_USE_INSTRUCTION,
@@ -278,6 +279,20 @@ export interface GroqGroundingOptions {
   referenceMaterial?: string;
   /** Extra system-prompt rules for answering from the reference material. */
   groundingInstruction?: string;
+  /** Request identifier for end-to-end tracing across API and tool execution. */
+  requestId?: string;
+  /** Authorization context for server-side permission checks during tool execution. */
+  auth?: AuthorizationContext;
+}
+
+export interface AssistantReplyResult {
+  content: string;
+  pendingApproval?: {
+    approvalId: string;
+    toolName: string;
+    summary: string;
+    details: Record<string, unknown>;
+  };
 }
 
 /**
@@ -289,7 +304,7 @@ export async function generateAssistantReply(
   messages: GroqRequestMessage[],
   signal?: AbortSignal,
   grounding?: GroqGroundingOptions
-): Promise<string> {
+): Promise<AssistantReplyResult> {
   const apiKey = process.env.GROQ_API_KEY?.trim();
   if (!apiKey) {
     throw new GroqConfigError("GROQ_API_KEY is not configured.");
@@ -329,7 +344,9 @@ export async function generateAssistantReply(
   );
 
   const start = Date.now();
-  const reqId = "grq" + Math.random().toString(36).slice(2,8);
+  const reqId =
+    grounding?.requestId?.trim() ||
+    "grq" + Math.random().toString(36).slice(2, 8);
   const ctxMsgCount = messages.length;
   const ctxTotalChars = messages.reduce((n,m)=>n + (m.content?.trim().length||0), 0);
   const ctxAttachCount = messages.reduce((n,m)=>n + (m.files?.length||0), 0);
@@ -345,7 +362,7 @@ export async function generateAssistantReply(
   // One model attempt. Tool definitions are only offered to documented
   // tool-capable models; every request in the loop reuses the same abort
   // signal, timeout, and output cap as the original single-call path.
-  const attempt = async (modelName: string): Promise<string> => {
+  const attempt = async (modelName: string): Promise<AssistantReplyResult> => {
     const t0 = Date.now();
     const toolEnabled = supportsToolCalling(modelName);
     const attemptMessages: GroqMessage[] = [
@@ -414,12 +431,14 @@ export async function generateAssistantReply(
       console.log(JSON.stringify({level:"info",reqId,phase:"groq.attempt.start",model:modelName}));
 
       let reply: string;
+      let pendingApproval: AssistantReplyResult["pendingApproval"];
       if (toolEnabled) {
         const loopResult = await runToolLoop<GroqMessage>({
           messages: attemptMessages,
           tools: [...REGISTERED_TOOLS],
           maxIterations: MAX_TOOL_ITERATIONS,
           maxToolCalls: MAX_TOOL_CALLS,
+          requestId: reqId,
           callModel: async ({ messages: loopMessages, toolChoice }) => {
             const assistantMessage = await requestCompletion(
               loopMessages,
@@ -434,7 +453,8 @@ export async function generateAssistantReply(
               assistantMessage,
             };
           },
-          executeTool: executeRegisteredTool,
+          executeTool: (name, rawArguments, context) =>
+            executeRegisteredTool(name, rawArguments, context),
           createToolMessage: (toolMessage) => ({
             role: "tool",
             content: toolMessage.content,
@@ -458,6 +478,7 @@ export async function generateAssistantReply(
         reply = loopResult.usedToolNames.includes(GET_PROJECT_STATUS_TOOL_NAME)
           ? ensureDemoDataDisclosure(loopResult.content)
           : loopResult.content;
+        pendingApproval = loopResult.pendingApproval;
       } else {
         const assistantMessage = await requestCompletion(attemptMessages);
         const content =
@@ -474,7 +495,10 @@ export async function generateAssistantReply(
 
       const dur = Date.now() - t0;
       try { console.log(JSON.stringify({level:"info",reqId,phase:"groq.attempt.ok",model:modelName,durMs:dur})); } catch {}
-      return reply;
+      return {
+        content: reply,
+        ...(pendingApproval ? { pendingApproval } : {}),
+      };
     } catch (e) {
       const dur = Date.now() - t0;
       const status = readProviderErrorStatus(e);

@@ -1,10 +1,8 @@
 // The single read-only tool exposed to the assistant.
 // Tool registration and execution dispatch are handled by the central registry (@/tools/registry).
 
-import type {
-  ToolDefinition,
-  ToolExecutionResult,
-} from "@/lib/toolCalling";
+import type { ToolDefinition } from "@/lib/toolCalling";
+import type { StructuredToolOutput } from "@/tools/registry";
 import { getProjectStatus } from "@/tools/projectData";
 
 export const GET_PROJECT_STATUS_TOOL_NAME = "get_project_status";
@@ -38,11 +36,14 @@ export const GET_PROJECT_STATUS_METADATA = {
 
 /** Appended to the system prompt only when the selected model supports tools. */
 export const TOOL_USE_INSTRUCTION = [
-  "Project status tool rules:",
-  "- Call get_project_status only when the user asks for the status of a specific project ID.",
+  "Available business operations and rules:",
+  "- get_project_status: Call when the user asks for the status of a specific project ID (e.g. PRJ-104). Returns demo project details.",
+  "- list_project_tasks: Call when the user asks to view or list tasks for a specific project ID (e.g. PRJ-104).",
+  "- create_project_task: Call when the user asks to create or add a task in a project. Requires projectId and title. This is a protected action that requires explicit user confirmation.",
   "- Never guess or invent a project ID, project name, status, progress note, or blocker.",
-  "- The tool returns demo/sample data. Whenever a tool result says sampleData is true, explicitly tell the user that the project status is demo/sample data and not verified company information.",
-  "- If the tool returns found: false, say that no matching project was found in the demo dataset. Do not invent details.",
+  "- Demo data notice: Whenever a tool result says sampleData is true, explicitly tell the user that the data is demo/sample data and not verified company information.",
+  "- Approval notice: When a tool returns status: 'pending_approval', inform the user that the operation has been prepared and requires their explicit confirmation to execute, summarizing the proposed task details.",
+  "- If a project lookup returns found: false, say that no matching project was found in the demo dataset. Do not invent details.",
 ].join("\n");
 
 /** Used when the selected model has no documented tool-calling support. */
@@ -107,11 +108,11 @@ export function parseProjectId(rawArguments: string): string {
 
 /**
  * Executes the get_project_status tool.
- * Validates arguments and performs demo project lookup.
+ * Validates arguments, performs demo project lookup, and returns a structured output.
  */
 export function executeGetProjectStatus(
   rawArguments: string
-): ToolExecutionResult {
+): StructuredToolOutput {
   try {
     const projectId = parseProjectId(rawArguments);
     const project = getProjectStatus(projectId);
@@ -119,32 +120,35 @@ export function executeGetProjectStatus(
     if (!project) {
       return {
         ok: true,
-        content: JSON.stringify({
+        data: {
           found: false,
           projectId: projectId.toUpperCase(),
           sampleData: true,
           notice:
             "No matching project was found in the demo/sample dataset. Do not invent project details. This dataset is not verified company information.",
-        }),
+        },
       };
     }
 
     return {
       ok: true,
-      content: JSON.stringify({
+      data: {
         found: true,
         sampleData: true,
         notice: DEMO_DATA_NOTICE,
         project,
-      }),
+      },
     };
   } catch (error) {
     return {
       ok: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "The tool arguments were invalid.",
+      error: {
+        code: "INVALID_ARGUMENTS",
+        message:
+          error instanceof Error
+            ? error.message
+            : "The tool arguments were invalid.",
+      },
     };
   }
 }

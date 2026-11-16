@@ -276,3 +276,62 @@ test("parseToolCalls rejects malformed provider responses", () => {
     ToolLoopError
   );
 });
+
+test("runToolLoop propagates requestId to executeTool and includes structured code in tool message on error", async () => {
+  const requests: ToolModelRequest<TestMessage>[] = [];
+  let capturedContext:
+    | { requestId: string; toolCallId?: string; timestamp?: number }
+    | undefined;
+
+  const result = await runToolLoop<TestMessage>({
+    messages: [{ role: "user", content: "Query project" }],
+    tools: [GET_PROJECT_STATUS_TOOL],
+    requestId: "req_trace_loop_456",
+    executeTool: (name, rawArgs, context) => {
+      capturedContext = context;
+      return {
+        ok: false,
+        error: "Custom failure message",
+        code: "INVALID_ARGUMENTS",
+      };
+    },
+    createToolMessage: toolMessage,
+    callModel: async (request) => {
+      requests.push(request);
+      if (requests.length === 1) {
+        const toolCall = call(
+          "call_test_1",
+          GET_PROJECT_STATUS_TOOL_NAME,
+          "{}"
+        );
+        return {
+          content: null,
+          toolCalls: [toolCall],
+          assistantMessage: {
+            role: "assistant",
+            content: null,
+            tool_calls: [toolCall],
+          },
+        };
+      }
+      return {
+        content: "Error handled.",
+        toolCalls: [],
+        assistantMessage: { role: "assistant", content: "Error handled." },
+      };
+    },
+  });
+
+  assert.equal(result.content, "Error handled.");
+  assert.ok(capturedContext);
+  assert.equal(capturedContext.requestId, "req_trace_loop_456");
+  assert.equal(capturedContext.toolCallId, "call_test_1");
+
+  const toolResults = requests[1].messages.filter(
+    (message) => message.role === "tool"
+  );
+  assert.equal(toolResults.length, 1);
+  const toolPayload = JSON.parse(toolResults[0].content ?? "{}");
+  assert.equal(toolPayload.error, "Custom failure message");
+  assert.equal(toolPayload.code, "INVALID_ARGUMENTS");
+});

@@ -7,7 +7,12 @@ import React, {
   useRef,
   useState,
 } from "react";
-import type { ApiChatMessage, Attachment, ChatMessage } from "@/types/chat";
+import type {
+  ApiChatMessage,
+  ApiChatResponse,
+  Attachment,
+  ChatMessage,
+} from "@/types/chat";
 import { ChatHeader } from "./ChatHeader";
 import { MessageList } from "./MessageList";
 import { ChatComposer } from "./ChatComposer";
@@ -142,13 +147,7 @@ export const BusinessSupportChat: React.FC = () => {
           throw new RequestError(message, isRetryableStatus(response.status));
         }
 
-        const data = (await response.json()) as {
-          message?: {
-            content?: unknown;
-            sources?: unknown;
-            insufficientEvidence?: unknown;
-          };
-        };
+        const data = (await response.json()) as ApiChatResponse;
         const rawContent = data.message?.content;
         const content = typeof rawContent === "string" ? rawContent.trim() : "";
         if (!content) {
@@ -183,6 +182,7 @@ export const BusinessSupportChat: React.FC = () => {
           createdAt: new Date().toISOString(),
           ...(sources.length > 0 ? { sources } : {}),
           ...(insufficientEvidence ? { insufficientEvidence: true } : {}),
+          ...(data.message?.pendingApproval ? { pendingApproval: data.message.pendingApproval, approvalStatus: "pending" as const } : {}),
         };
         appendMessage(assistantMessage);
 

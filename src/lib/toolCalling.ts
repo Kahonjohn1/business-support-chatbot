@@ -33,9 +33,30 @@ export interface ToolMessage {
   content: string;
 }
 
-export type ToolExecutionResult =
-  | { ok: true; content: string }
-  | { ok: false; error: string };
+export interface ToolExecutionMeta {
+  requestId: string;
+  toolCallId?: string;
+  durationMs: number;
+  timestamp: number;
+}
+
+export interface ToolExecutionSuccess<T = unknown> {
+  ok: true;
+  content: string;
+  data?: T;
+  meta?: ToolExecutionMeta;
+}
+
+export interface ToolExecutionFailure {
+  ok: false;
+  error: string;
+  code?: string;
+  meta?: ToolExecutionMeta;
+}
+
+export type ToolExecutionResult<T = unknown> =
+  | ToolExecutionSuccess<T>
+  | ToolExecutionFailure;
 
 export interface ToolModelRequest<TMessage> {
   messages: TMessage[];
@@ -56,22 +77,40 @@ export interface ToolLoopEvent {
   ok: boolean;
 }
 
+export interface ToolExecutionContext {
+  readonly requestId: string;
+  readonly toolCallId?: string;
+  readonly timestamp?: number;
+  readonly auth?: unknown;
+}
+
 export interface ToolLoopOptions<TMessage extends { role: string }> {
   messages: TMessage[];
   tools: ToolDefinition[];
   callModel: (
     request: ToolModelRequest<TMessage>
   ) => Promise<ToolModelResponse<TMessage>>;
-  executeTool: (toolName: string, rawArguments: string) => ToolExecutionResult;
+  executeTool: (
+    toolName: string,
+    rawArguments: string,
+    context?: ToolExecutionContext
+  ) => ToolExecutionResult;
   createToolMessage: (message: ToolMessage) => TMessage;
   maxIterations?: number;
   maxToolCalls?: number;
   onToolResult?: (event: ToolLoopEvent) => void;
+  requestId?: string;
 }
 
 export interface ToolLoopResult {
   content: string;
   usedToolNames: string[];
+  pendingApproval?: {
+    approvalId: string;
+    toolName: string;
+    summary: string;
+    details: Record<string, unknown>;
+  };
 }
 
 /** Maximum number of tool-execution rounds before a final answer is forced. */
@@ -147,6 +186,7 @@ export async function runToolLoop<TMessage extends { role: string }>(
   const maxToolCalls = options.maxToolCalls ?? MAX_TOOL_CALLS;
   const messages = [...options.messages];
   const usedToolNames = new Set<string>();
+  let pendingApproval: ToolLoopResult["pendingApproval"] = undefined;
   let totalToolCalls = 0;
 
   for (let iteration = 0; iteration <= maxIterations; iteration++) {
@@ -160,7 +200,11 @@ export async function runToolLoop<TMessage extends { role: string }>(
     if (finalTurn) {
       const content = response.content?.trim();
       if (content) {
-        return { content, usedToolNames: [...usedToolNames] };
+        return {
+          content,
+          usedToolNames: [...usedToolNames],
+          ...(pendingApproval ? { pendingApproval } : {}),
+        };
       }
       throw new ToolLoopError(
         "The model did not return a final answer after using tools."
@@ -170,7 +214,11 @@ export async function runToolLoop<TMessage extends { role: string }>(
     if (response.toolCalls.length === 0) {
       const content = response.content?.trim();
       if (content) {
-        return { content, usedToolNames: [...usedToolNames] };
+        return {
+          content,
+          usedToolNames: [...usedToolNames],
+          ...(pendingApproval ? { pendingApproval } : {}),
+        };
       }
       throw new ToolLoopError("The model returned an empty response.");
     }
@@ -198,17 +246,39 @@ export async function runToolLoop<TMessage extends { role: string }>(
       try {
         result = options.executeTool(
           toolCall.function.name,
-          toolCall.function.arguments
+          toolCall.function.arguments,
+          {
+            requestId: options.requestId ?? "unknown-req",
+            toolCallId: toolCall.id,
+            timestamp: Date.now(),
+          }
         );
       } catch {
         result = {
           ok: false,
           error: "The tool could not be executed.",
+          code: "EXECUTION_FAILED",
         };
       }
 
       if (result.ok) {
         usedToolNames.add(toolCall.function.name);
+        const data = (result as { data?: unknown }).data;
+        if (
+          isRecord(data) &&
+          data.status === "pending_approval" &&
+          typeof data.approvalId === "string"
+        ) {
+          pendingApproval = {
+            approvalId: data.approvalId,
+            toolName: toolCall.function.name,
+            summary:
+              typeof data.summary === "string"
+                ? data.summary
+                : `Approval required for ${toolCall.function.name}`,
+            details: isRecord(data.details) ? data.details : {},
+          };
+        }
       }
       messages.push(
         options.createToolMessage({
@@ -217,7 +287,12 @@ export async function runToolLoop<TMessage extends { role: string }>(
           name: toolCall.function.name,
           content: result.ok
             ? result.content
-            : JSON.stringify({ error: result.error }),
+            : JSON.stringify({
+                error: result.error,
+                ...("code" in result && typeof result.code === "string"
+                  ? { code: result.code }
+                  : {}),
+              }),
         })
       );
       options.onToolResult?.({

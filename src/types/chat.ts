@@ -22,6 +22,13 @@ export interface ApiChatMessage {
   attachmentIds?: string[];
 }
 
+export interface PendingApprovalInfo {
+  approvalId: string;
+  toolName: string;
+  summary: string;
+  details: Record<string, unknown>;
+}
+
 /** The assistant reply returned by the chat API. */
 export interface ApiChatResponse {
   message: {
@@ -31,6 +38,8 @@ export interface ApiChatResponse {
     sources?: ChatSource[];
     /** True when the approved knowledge base does not document the answer. */
     insufficientEvidence?: boolean;
+    /** Present when an operation was proposed that requires explicit user approval. */
+    pendingApproval?: PendingApprovalInfo;
   };
 }
 
@@ -58,6 +67,10 @@ export interface ChatMessage {
   sources?: ChatSource[];
   /** True when the approved knowledge base does not document the answer. */
   insufficientEvidence?: boolean;
+  /** Present when a protected operation is waiting for explicit user approval. */
+  pendingApproval?: PendingApprovalInfo;
+  /** Status of user approval decision: "pending" | "approved" | "rejected". */
+  approvalStatus?: "pending" | "approved" | "rejected";
 }
 
 export interface PromptSuggestion {
