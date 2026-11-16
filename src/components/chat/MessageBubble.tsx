@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Copy } from "lucide-react";
 import { ChatMessage } from "@/types/chat";
 import { AttachmentChip } from "./AttachmentChip";
 import ReactMarkdown from "react-markdown";
@@ -27,6 +28,28 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
       return "";
     }
   }, [message.createdAt]);
+
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) {
+      return;
+    }
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  const handleCopy = async () => {
+    const text = contentRef.current?.innerText.trim();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
 
   // Approval handling state
   const [approvalStatus, setApprovalStatus] = useState(message.approvalStatus);
@@ -77,6 +100,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
       {/* Bubble Content */}
       {hasContent && (
         <div
+          ref={isUser ? undefined : contentRef}
           className={`relative max-w-[85%] sm:max-w-[75%] md:max-w-[70%] px-4 sm:px-4.5 py-3 rounded-2xl text-sm leading-relaxed shadow-xs ${
             isUser
               ? "bg-primary text-primary-foreground rounded-tr-xs"
@@ -94,6 +118,29 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
               {message.content}
             </ReactMarkdown>
           )}
+        </div>
+      )}
+
+      {!isUser && hasContent && (
+        <div className="relative mt-1 flex max-w-[85%] sm:max-w-[75%] md:max-w-[70%] items-center px-1">
+          <button
+            type="button"
+            onClick={handleCopy}
+            aria-label={copied ? "Response copied to clipboard" : "Copy response"}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
+          >
+            {copied ? (
+              <>
+                <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Copied!</span>
+              </>
+            ) : (
+              <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+            )}
+          </button>
+          <span role="status" aria-live="polite" className="sr-only">
+            {copied ? "Response copied to clipboard" : ""}
+          </span>
         </div>
       )}
 
