@@ -94,6 +94,7 @@ export function AppShell({
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportSummary, setSupportSummary] = useState("");
   const [historyOpen, setHistoryOpen] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [searchedConversations, setSearchedConversations] = useState<
     readonly ConversationListItem[] | null
@@ -205,6 +206,7 @@ export function AppShell({
   }
 
   function focusSearch() {
+    setSearchOpen(true);
     setHistoryOpen(true);
     setMobileOpen(false);
     window.setTimeout(() => searchRef.current?.focus(), 0);
@@ -311,15 +313,38 @@ export function AppShell({
           {!collapsed ? <span>New Chat</span> : null}
         </Link>
 
-        <button
-          className="mb-3 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted"
-          onClick={focusSearch}
-          title="Search conversations"
-          type="button"
-        >
-          <Search size={18} />
-          {!collapsed ? <span>Search</span> : null}
-        </button>
+        {searchOpen && !collapsed ? (
+          <input
+            aria-label="Search conversations"
+            className="mb-3 w-full rounded-lg bg-muted px-3 py-2 text-sm text-foreground outline-none"
+            onChange={(event) => {
+              const nextQuery = event.target.value;
+              setQuery(nextQuery);
+              if (!nextQuery.trim()) setSearchedConversations(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setQuery("");
+                setSearchedConversations(null);
+                setSearchOpen(false);
+              }
+            }}
+            placeholder="Search conversations"
+            ref={searchRef}
+            type="search"
+            value={query}
+          />
+        ) : (
+          <button
+            className="mb-3 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted"
+            onClick={focusSearch}
+            title="Search conversations"
+            type="button"
+          >
+            <Search size={18} />
+            {!collapsed ? <span>Search</span> : null}
+          </button>
+        )}
 
         <button
           className="mb-4 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted"
@@ -333,15 +358,6 @@ export function AppShell({
 
         {!collapsed && historyOpen ? (
           <div className="mb-5">
-            <input
-              aria-label="Search conversations"
-              className="mb-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search chat history..."
-              ref={searchRef}
-              type="search"
-              value={query}
-            />
             <ul className="space-y-1">
               {items.length === 0 ? (
                 <li className="px-3 py-2 text-xs text-muted-foreground">
