@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { ChatMessage } from "@/types/chat";
+import type { ApprovalOutcome } from "@/lib/approvalOutcome";
 import { MessageBubble } from "./MessageBubble";
 import { EmptyState } from "./EmptyState";
 import { LoadingIndicator } from "./LoadingIndicator";
@@ -7,6 +8,7 @@ import { LoadingIndicator } from "./LoadingIndicator";
 interface MessageListProps {
   messages: ChatMessage[];
   onSelectPrompt?: (promptText: string) => void;
+  onApprovalResolved?: (messageId: string, outcome: ApprovalOutcome) => void;
   isLoading?: boolean;
   loadingLabel?: string;
 }
@@ -14,6 +16,7 @@ interface MessageListProps {
 export const MessageList: React.FC<MessageListProps> = ({
   messages,
   onSelectPrompt,
+  onApprovalResolved,
   isLoading = false,
   loadingLabel,
 }) => {
@@ -43,7 +46,11 @@ export const MessageList: React.FC<MessageListProps> = ({
 
       {hasMessages &&
         messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
+          <MessageBubble
+            key={message.id}
+            message={message}
+            onApprovalResolved={onApprovalResolved}
+          />
         ))}
 
       {hasMessages && isLoading && <LoadingIndicator label={loadingLabel} />}

@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useRouter } from "next/navigation";
 import type {
   ApiChatMessage,
   ApiChatResponse,
@@ -17,8 +18,15 @@ import { ChatHeader } from "./ChatHeader";
 import { MessageList } from "./MessageList";
 import { ChatComposer } from "./ChatComposer";
 import { ErrorBanner } from "./ErrorBanner";
+import { useSupportSummaryReporter } from "@/components/workspace/SupportSummaryContext";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { createMessageId } from "@/lib/chatMessages";
+import { clearStoredConversation } from "@/lib/conversationStorage";
+import { conversationTitleFromMessages } from "@/lib/conversationPersistence";
+import {
+  formatApprovalOutcome,
+  type ApprovalOutcome,
+} from "@/lib/approvalOutcome";
 import { MAX_ATTACHMENTS } from "@/lib/chatLimits";
 import { buildRequestContext } from "@/lib/requestContext";
 import { parseSourceList } from "@/lib/knowledge/sources";
@@ -53,11 +61,60 @@ function isRetryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
-export const BusinessSupportChat: React.FC = () => {
+export interface BusinessSupportChatProps {
+  userId: string;
+  conversationId?: string | null;
+  initialMessages?: readonly ChatMessage[];
+}
+
+export const BusinessSupportChat: React.FC<BusinessSupportChatProps> = ({
+  userId,
+  conversationId = null,
+  initialMessages,
+}) => {
+  const router = useRouter();
+  const storageKey = conversationId ?? "new";
+
   // The conversation lives in React state, mirrored to a session-scoped copy
   // so a reload resumes it. isHydrated flips once that copy has been restored.
-  const { messages, appendMessage, clearConversation, isHydrated } =
-    useChatMessages();
+  const {
+    messages,
+    appendMessage,
+    updateMessage,
+    clearConversation,
+    isHydrated,
+  } = useChatMessages({
+    initialMessages,
+    storageKey,
+    userId,
+    useStoredSession: !conversationId,
+  });
+
+  const persistedCountRef = useRef<number>(initialMessages?.length ?? 0);
+  const persistenceBusyRef = useRef<boolean>(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
+
+  const handleApprovalResolved = useCallback(
+    (messageId: string, outcome: ApprovalOutcome) => {
+      let approvalStatus: ChatMessage["approvalStatus"];
+      if (outcome.status === "executed") {
+        approvalStatus = "approved";
+      } else if (outcome.status === "rejected") {
+        approvalStatus = "rejected";
+      } else {
+        approvalStatus = "failed";
+      }
+
+      updateMessage(messageId, { approvalStatus });
+      appendMessage({
+        id: createMessageId(),
+        role: "assistant",
+        content: formatApprovalOutcome(outcome),
+        createdAt: new Date().toISOString(),
+      });
+    },
+    [appendMessage, updateMessage]
+  );
 
   const [input, setInput] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -66,7 +123,6 @@ export const BusinessSupportChat: React.FC = () => {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isAnalyzingFiles, setIsAnalyzingFiles] = useState<boolean>(false);
   const [isRetryableError, setIsRetryableError] = useState<boolean>(true);
-  const [isSupportOpen, setIsSupportOpen] = useState<boolean>(false);
 
   // Concise, honest summary of the customer's issue drawn from the conversation,
   // used only when the user chooses to contact human support.
@@ -74,6 +130,11 @@ export const BusinessSupportChat: React.FC = () => {
     () => buildSupportSummary(messages),
     [messages]
   );
+  const reportSupportSummary = useSupportSummaryReporter();
+
+  useEffect(() => {
+    reportSupportSummary(supportSummary);
+  }, [reportSupportSummary, supportSummary]);
 
   // Guard to ensure an async reply cannot land in a conversation that was reset.
   const conversationSessionRef = useRef<number>(0);
@@ -230,6 +291,67 @@ export const BusinessSupportChat: React.FC = () => {
     setIsRetryableError(true);
     setError(null);
   }, []);
+
+  useEffect(() => {
+    if (!isHydrated || persistenceBusyRef.current) return;
+
+    const pending = messages.slice(persistedCountRef.current);
+    if (pending.length === 0) return;
+    if (!conversationId && !pending.some((message) => message.role === "assistant")) {
+      return;
+    }
+
+    let cancelled = false;
+    persistenceBusyRef.current = true;
+
+    void (async () => {
+      try {
+        let targetId = conversationId;
+
+        if (!targetId) {
+          const createResponse = await fetch("/api/conversations", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ title: conversationTitleFromMessages(messages) }),
+          });
+          if (!createResponse.ok) throw new Error("create failed");
+          const created = (await createResponse.json()) as {
+            conversation: { id: string };
+          };
+          targetId = created.conversation.id;
+        }
+
+        const saveResponse = await fetch(
+          `/api/conversations/${targetId}/messages`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ messages: pending }),
+          }
+        );
+        if (!saveResponse.ok) throw new Error("save failed");
+        if (cancelled) return;
+
+        persistedCountRef.current = messages.length;
+        setStorageError(null);
+        clearStoredConversation(storageKey, userId);
+        if (!conversationId) {
+          router.replace(`/c/${targetId}`);
+          router.refresh();
+        }
+      } catch {
+        if (!cancelled) {
+          setStorageError("This conversation could not be saved yet.");
+        }
+      } finally {
+        persistenceBusyRef.current = false;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, isHydrated, messages, router, storageKey, userId]);
 
   // Release the object URLs of any pending composer attachments and reset them.
   // Only these pending files are dropped from the shared cache; files belonging
@@ -411,25 +533,16 @@ export const BusinessSupportChat: React.FC = () => {
     clearComposerAttachments();
     clearConversation();
     setInput("");
-    setIsSupportOpen(false);
+    setStorageError(null);
+    router.push("/c/new");
   };
-
-  const handleToggleSupport = useCallback(() => {
-    setIsSupportOpen((open) => !open);
-  }, []);
 
   return (
     <section
       aria-label="Marque Technologies Support chat"
       className="relative flex flex-col w-full max-w-6xl h-[680px] sm:h-[740px] md:h-[800px] max-h-[90vh] bg-surface border border-border rounded-2xl overflow-hidden shadow-xs"
     >
-      <ChatHeader
-        onNewConversation={handleNewConversation}
-        onContactSupport={handleToggleSupport}
-        onCloseSupport={() => setIsSupportOpen(false)}
-        isSupportOpen={isSupportOpen}
-        supportSummary={supportSummary}
-      />
+      <ChatHeader onNewConversation={handleNewConversation} />
 
       <ErrorBanner
         message={error}
@@ -437,10 +550,17 @@ export const BusinessSupportChat: React.FC = () => {
         onRetry={isRetryableError ? handleRetry : undefined}
       />
 
+      {storageError ? (
+        <p className="shrink-0 bg-danger-subtle px-4 py-2 text-sm text-danger">
+          {storageError}
+        </p>
+      ) : null}
+
       <main className="flex-1 flex flex-col min-h-0 relative bg-background">
         <MessageList
           messages={messages}
           onSelectPrompt={handleSelectPrompt}
+          onApprovalResolved={handleApprovalResolved}
           isLoading={isLoading}
           loadingLabel={isAnalyzingFiles ? "Analyzing files..." : undefined}
         />

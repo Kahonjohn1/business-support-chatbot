@@ -69,8 +69,8 @@ export interface ChatMessage {
   insufficientEvidence?: boolean;
   /** Present when a protected operation is waiting for explicit user approval. */
   pendingApproval?: PendingApprovalInfo;
-  /** Status of user approval decision: "pending" | "approved" | "rejected". */
-  approvalStatus?: "pending" | "approved" | "rejected";
+  /** Status of the user's approval decision and any terminal failure. */
+  approvalStatus?: "pending" | "approved" | "rejected" | "failed";
 }
 
 export interface PromptSuggestion {

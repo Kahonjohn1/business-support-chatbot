@@ -1,4 +1,9 @@
-import type { Attachment, ChatMessage, MessageRole } from "@/types/chat";
+import type {
+  Attachment,
+  ChatMessage,
+  MessageRole,
+  PendingApprovalInfo,
+} from "@/types/chat";
 import { parseSourceList } from "@/lib/knowledge/sources";
 
 // Session-scoped copy of the active conversation so an accidental page reload
@@ -54,6 +59,56 @@ function parseAttachment(value: unknown): Attachment | null {
   };
 }
 
+type StoredApprovalStatus = NonNullable<ChatMessage["approvalStatus"]>;
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isApprovalStatus(value: unknown): value is StoredApprovalStatus {
+  return (
+    value === "pending" ||
+    value === "approved" ||
+    value === "rejected" ||
+    value === "failed"
+  );
+}
+
+function parsePendingApproval(value: unknown): PendingApprovalInfo | null {
+  if (!isPlainRecord(value)) return null;
+
+  const { approvalId, toolName, summary, details } = value;
+  if (
+    typeof approvalId !== "string" ||
+    !approvalId.trim() ||
+    approvalId.length > 256
+  ) {
+    return null;
+  }
+  if (
+    typeof toolName !== "string" ||
+    !toolName.trim() ||
+    toolName.length > 100
+  ) {
+    return null;
+  }
+  if (
+    typeof summary !== "string" ||
+    !summary.trim() ||
+    summary.length > 500
+  ) {
+    return null;
+  }
+  if (!isPlainRecord(details)) return null;
+
+  return {
+    approvalId,
+    toolName,
+    summary,
+    details: { ...details },
+  };
+}
+
 /** Rebuilds a message only when every field validates; otherwise null. */
 function parseMessage(value: unknown): ChatMessage | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -101,6 +156,12 @@ function parseMessage(value: unknown): ChatMessage | null {
     message.insufficientEvidence = true;
   }
 
+  const pendingApproval = parsePendingApproval(candidate.pendingApproval);
+  if (pendingApproval && isApprovalStatus(candidate.approvalStatus)) {
+    message.pendingApproval = pendingApproval;
+    message.approvalStatus = candidate.approvalStatus;
+  }
+
   return message;
 }
 
@@ -132,20 +193,40 @@ function serializeMessage(message: ChatMessage): Record<string, unknown> {
   if (message.insufficientEvidence) {
     stored.insufficientEvidence = true;
   }
+  if (message.pendingApproval && message.approvalStatus) {
+    stored.pendingApproval = {
+      approvalId: message.pendingApproval.approvalId,
+      toolName: message.pendingApproval.toolName,
+      summary: message.pendingApproval.summary,
+      details: message.pendingApproval.details,
+    };
+    stored.approvalStatus = message.approvalStatus;
+  }
   return stored;
 }
 
+function resolveStorageKey(key?: string, userId?: string): string {
+  const scope = userId?.trim();
+  const base = scope ? `${STORAGE_KEY}:${scope}` : STORAGE_KEY;
+  return key ? `${base}:${key}` : base;
+}
+
 /** Mirrors the conversation. An empty conversation removes the stored copy. */
-export function saveConversation(messages: readonly ChatMessage[]): void {
+export function saveConversation(
+  messages: readonly ChatMessage[],
+  key?: string,
+  userId?: string
+): void {
   try {
     const storage = getStorage();
     if (!storage) return;
+    const storageKey = resolveStorageKey(key, userId);
     if (messages.length === 0) {
-      storage.removeItem(STORAGE_KEY);
+      storage.removeItem(storageKey);
       return;
     }
     storage.setItem(
-      STORAGE_KEY,
+      storageKey,
       JSON.stringify({
         version: SCHEMA_VERSION,
         messages: messages.map(serializeMessage),
@@ -162,12 +243,15 @@ export function saveConversation(messages: readonly ChatMessage[]): void {
  * re-aligned history could contain two user turns in a row, which the
  * conversation rules forbid.
  */
-export function loadConversation(): ChatMessage[] | null {
+export function loadConversation(
+  key?: string,
+  userId?: string
+): ChatMessage[] | null {
   try {
     const storage = getStorage();
     if (!storage) return null;
 
-    const raw = storage.getItem(STORAGE_KEY);
+    const raw = storage.getItem(resolveStorageKey(key, userId));
     if (!raw) return null;
 
     const parsed: unknown = JSON.parse(raw);
@@ -193,9 +277,9 @@ export function loadConversation(): ChatMessage[] | null {
 }
 
 /** Discards the stored copy (new conversation, explicit clear). */
-export function clearStoredConversation(): void {
+export function clearStoredConversation(key?: string, userId?: string): void {
   try {
-    getStorage()?.removeItem(STORAGE_KEY);
+    getStorage()?.removeItem(resolveStorageKey(key, userId));
   } catch {
     // Nothing to do when storage is unavailable.
   }

@@ -7,6 +7,7 @@ import {
   clearChatMessages,
   createInitialMessages,
   createMessageId,
+  updateChatMessage,
 } from "../src/lib/chatMessages.ts";
 import type { ChatMessage } from "../src/types/chat.ts";
 
@@ -33,6 +34,20 @@ test("appendChatMessage adds to the end without mutating the input", () => {
   assert.equal(after[0], first);
   assert.equal(after[1].id, "m2");
   assert.equal(before.length, 1, "the original array is not mutated");
+});
+
+test("updateChatMessage updates only the matching message without mutating the input", () => {
+  const first = message("m1");
+  const before: ChatMessage[] = [first, message("m2")];
+
+  const after = updateChatMessage(before, "m2", {
+    approvalStatus: "failed",
+  });
+
+  assert.equal(after.length, 2);
+  assert.equal(after[0], first);
+  assert.equal(after[1].approvalStatus, "failed");
+  assert.equal(before[1].approvalStatus, undefined);
 });
 
 test("clearChatMessages drops every message", () => {

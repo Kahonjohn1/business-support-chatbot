@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { ChatMessage } from "@/types/chat";
+import type { ApprovalOutcome } from "@/lib/approvalOutcome";
 import { AttachmentChip } from "./AttachmentChip";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
@@ -8,9 +9,17 @@ import remarkGfm from "remark-gfm";
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  onApprovalResolved?: (messageId: string, outcome: ApprovalOutcome) => void;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+export const MessageBubble: React.FC<MessageBubbleProps> = ({
+  message,
+  onApprovalResolved,
+}) => {
   const isUser = message.role === "user";
   const attachments = message.attachments ?? [];
   const hasContent = message.content.trim().length > 0;
@@ -30,7 +39,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   }, [message.createdAt]);
 
   const contentRef = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(true);
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!copied) {
@@ -51,32 +67,80 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
     }
   };
 
-  // Approval handling state
-  const [approvalStatus, setApprovalStatus] = useState(message.approvalStatus);
-  const [approvalResult, setApprovalResult] = useState<unknown>(null);
-  const pending = message.pendingApproval && approvalStatus !== "approved" && approvalStatus !== "rejected";
+  const [approvalStatus, setApprovalStatus] = useState<
+    ChatMessage["approvalStatus"]
+  >(message.approvalStatus);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
+  const pending =
+    Boolean(message.pendingApproval) &&
+    (!approvalStatus || approvalStatus === "pending");
+  const approvalResolved =
+    Boolean(message.pendingApproval) &&
+    approvalStatus !== undefined &&
+    approvalStatus !== "pending";
 
   const handleDecision = async (decision: "approve" | "reject") => {
-    if (!message.pendingApproval) return;
-    const payload = {
-      approvalId: message.pendingApproval.approvalId,
-      decision,
-    };
+    if (!message.pendingApproval || isSubmittingDecision) return;
+
+    setIsSubmittingDecision(true);
+    setApprovalError(null);
+
     try {
       const resp = await fetch("/api/approvals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          approvalId: message.pendingApproval.approvalId,
+          decision,
+        }),
       });
-      const result = await resp.json();
-      setApprovalStatus(decision === "approve" ? "approved" : "rejected");
-      if (result.result) {
-        setApprovalResult(result.result);
-      } else if (result.message) {
-        setApprovalResult({ info: result.message });
+
+      let result: unknown = null;
+      try {
+        result = await resp.json();
+      } catch {}
+
+      if (!mountedRef.current) return;
+
+      if (!resp.ok) {
+        const messageText =
+          isRecord(result) && typeof result.error === "string"
+            ? result.error
+            : "The approval decision could not be processed. Please try again.";
+
+        if (isRecord(result) && result.status === "failed") {
+          setApprovalStatus("failed");
+          setApprovalError(messageText);
+          onApprovalResolved?.(message.id, {
+            status: "failed",
+            approvalId: message.pendingApproval.approvalId,
+            error: messageText,
+          });
+          return;
+        }
+
+        setApprovalError(messageText);
+        return;
       }
-    } catch (e) {
-      console.error("Approval request failed", e);
+
+      const executedResult = isRecord(result) ? result.result : undefined;
+      setApprovalStatus(decision === "approve" ? "approved" : "rejected");
+      onApprovalResolved?.(message.id, {
+        status: decision === "approve" ? "executed" : "rejected",
+        approvalId: message.pendingApproval.approvalId,
+        result: executedResult,
+      });
+    } catch {
+      if (mountedRef.current) {
+        setApprovalError(
+          "Could not reach the approval service. Please check your connection and try again."
+        );
+      }
+    } finally {
+      if (mountedRef.current) {
+        setIsSubmittingDecision(false);
+      }
     }
   };
 
@@ -190,25 +254,43 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
           <p className="text-sm font-medium">{message.pendingApproval.summary}</p>
           <div className="mt-1 flex gap-2">
             <button
-              className="px-3 py-1 text-sm bg-primary text-primary-foreground rounded"
+              type="button"
+              className="px-3 py-1 text-sm bg-primary text-primary-foreground rounded disabled:cursor-not-allowed disabled:opacity-60"
               onClick={() => handleDecision("approve")}
+              disabled={isSubmittingDecision}
             >
-              Approve
+              {isSubmittingDecision ? "Submitting..." : "Approve"}
             </button>
             <button
-              className="px-3 py-1 text-sm bg-destructive text-destructive-foreground rounded"
+              type="button"
+              className="px-3 py-1 text-sm bg-destructive text-destructive-foreground rounded disabled:cursor-not-allowed disabled:opacity-60"
               onClick={() => handleDecision("reject")}
+              disabled={isSubmittingDecision}
             >
               Reject
             </button>
           </div>
+          {approvalError && (
+            <p role="alert" className="mt-2 text-xs text-destructive">
+              {approvalError}
+            </p>
+          )}
         </div>
       )}
 
-      {/* Show result after approval decision */}
-      {approvalResult !== null && (
+      {approvalResolved && message.pendingApproval && (
         <div className="mt-2 p-2 border rounded bg-muted">
-          <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(approvalResult, null, 2)}</pre>
+          <p className="text-sm font-medium">{message.pendingApproval.summary}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {approvalStatus === "approved" && "Approved and executed."}
+            {approvalStatus === "rejected" && "Rejected. No changes were made."}
+            {approvalStatus === "failed" && "Execution failed. See the report below."}
+          </p>
+          {approvalError && (
+            <p role="alert" className="mt-2 text-xs text-destructive">
+              {approvalError}
+            </p>
+          )}
         </div>
       )}
     </div>

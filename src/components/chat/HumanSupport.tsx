@@ -6,6 +6,7 @@ import {
 } from "@/lib/supportChannels";
 
 interface HumanSupportProps {
+  className?: string;
   id?: string;
   summary: string;
   onClose: () => void;
@@ -17,6 +18,7 @@ interface HumanSupportProps {
 // user asks. See src/lib/supportChannels.ts for the single source of contact
 // details.
 export const HumanSupport: React.FC<HumanSupportProps> = ({
+  className,
   id,
   summary,
   onClose,
@@ -49,7 +51,10 @@ export const HumanSupport: React.FC<HumanSupportProps> = ({
       id={id}
       role="region"
       aria-label="Contact support options"
-      className="absolute left-4 sm:left-6 top-full z-30 mt-2 w-72 max-w-[calc(100%-2rem)] rounded-xl border border-border bg-surface p-3 shadow-lg"
+      className={`rounded-xl border border-border bg-surface p-3 shadow-lg ${
+        className ??
+        "absolute left-4 sm:left-6 top-full z-30 mt-2 w-72 max-w-[calc(100%-2rem)]"
+      }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">

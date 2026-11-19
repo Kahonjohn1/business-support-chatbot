@@ -9,7 +9,10 @@ import type {
 import {
   GET_PROJECT_STATUS_TOOL,
   GET_PROJECT_STATUS_METADATA,
+  LIST_PROJECTS_TOOL,
+  LIST_PROJECTS_METADATA,
   executeGetProjectStatus,
+  executeListProjects,
 } from "@/tools/projectStatusTool";
 import {
   CREATE_PROJECT_TASK_TOOL,
@@ -21,7 +24,6 @@ import {
 } from "@/tools/tasksTool";
 import {
   checkPermission,
-  DEFAULT_DEMO_AUTH_CONTEXT,
   hasPermissionPolicy,
   type AuthorizationContext,
 } from "@/lib/permissions";
@@ -124,7 +126,8 @@ export function createDefaultExecutionContext(
       `req_${Math.random().toString(36).slice(2, 8)}`,
     toolCallId: overrides?.toolCallId,
     timestamp: overrides?.timestamp ?? Date.now(),
-    auth: overrides?.auth ?? DEFAULT_DEMO_AUTH_CONTEXT,
+    ...(overrides?.auth ? { auth: overrides.auth } : {}),
+    ...(overrides?.approvalId ? { approvalId: overrides.approvalId } : {}),
   };
 }
 
@@ -330,9 +333,33 @@ export class ToolRegistry {
 
     // Server-side authorization check for protected or policy-backed tools.
     if (tool.metadata.requiresAuth || hasPermissionPolicy(name)) {
-      const authContext =
-        (ctx.auth as AuthorizationContext | undefined) ??
-        DEFAULT_DEMO_AUTH_CONTEXT;
+      const authContext = ctx.auth as AuthorizationContext | undefined;
+      if (typeof authContext?.userId !== "string" || !authContext.userId.trim()) {
+        const durationMs = Date.now() - t0;
+        recordAuditEvent({
+          requestId: ctx.requestId,
+          toolName: name,
+          operation: "permission_check",
+          status: "denied",
+          permissionDecision: {
+            permitted: false,
+            reason: "Verified user identity is required.",
+          },
+        });
+
+        return {
+          ok: false,
+          error: "Verified user identity is required for this operation.",
+          code: "PERMISSION_DENIED",
+          meta: {
+            requestId: ctx.requestId,
+            toolCallId: ctx.toolCallId,
+            durationMs,
+            timestamp: ctx.timestamp ?? t0,
+          },
+        };
+      }
+
       const permResult = checkPermission(name, authContext);
       if (!permResult.permitted) {
         const durationMs = Date.now() - t0;
@@ -343,7 +370,7 @@ export class ToolRegistry {
           status: "denied",
           permissionDecision: {
             permitted: false,
-            role: authContext.role,
+            role: authContext?.role,
             requiredPermission: permResult.requiredPermission,
             reason: permResult.reason,
           },
@@ -369,7 +396,7 @@ export class ToolRegistry {
         status: "permitted",
         permissionDecision: {
           permitted: true,
-          role: authContext.role,
+          role: authContext?.role,
           requiredPermission: permResult.requiredPermission,
         },
       });
@@ -484,11 +511,17 @@ export class ToolRegistry {
 /** Central tool registry instance for the application. */
 export const toolRegistry = new ToolRegistry();
 
-// Register the existing get_project_status tool.
+// Register the read-only project tools.
 toolRegistry.register({
   definition: GET_PROJECT_STATUS_TOOL,
   handler: executeGetProjectStatus,
   metadata: GET_PROJECT_STATUS_METADATA,
+});
+
+toolRegistry.register({
+  definition: LIST_PROJECTS_TOOL,
+  handler: executeListProjects,
+  metadata: LIST_PROJECTS_METADATA,
 });
 
 // Register the demonstration business tools
@@ -504,12 +537,15 @@ toolRegistry.register({
   metadata: LIST_PROJECT_TASKS_METADATA,
 });
 
-/**
- * Model-facing list of tools derived from the central tool registry.
- * Derived directly from the registry to avoid list drift.
- */
+const MODEL_FACING_TOOL_NAMES: readonly string[] = [];
+
 export const REGISTERED_TOOLS: readonly ToolDefinition[] = Object.freeze(
-  toolRegistry.getDefinitions()
+  toolRegistry
+    .getAll()
+    .filter((tool) =>
+      MODEL_FACING_TOOL_NAMES.includes(tool.definition.function.name)
+    )
+    .map((tool) => tool.definition)
 );
 
 /**

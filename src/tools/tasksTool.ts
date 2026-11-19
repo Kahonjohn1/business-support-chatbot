@@ -1,6 +1,20 @@
 import type { ToolDefinition } from "@/lib/toolCalling";
-import type { StructuredToolOutput, ToolExecutionContext, ToolMetadata } from "@/tools/registry";
-import { getProjectStatus } from "@/tools/projectData";
+import type {
+  StructuredToolOutput,
+  ToolExecutionContext,
+  ToolMetadata,
+} from "@/tools/registry";
+import { findNameMatches } from "@/lib/resourceMatching";
+import {
+  resolveProjectReference,
+  parseProjectReference,
+  type ProjectReference,
+} from "@/tools/projectStatusTool";
+import {
+  toProjectChoice,
+  type ProjectResolution,
+  type ProjectStatus,
+} from "@/tools/projectData";
 import {
   createTask,
   getTasksForProject,
@@ -8,9 +22,11 @@ import {
   type ProjectTask,
 } from "@/tools/taskData";
 import {
+  beginApprovalExecution,
   createApprovalRequest,
   getApprovalRequest,
   markApprovalExecuted,
+  markApprovalFailed,
 } from "@/lib/approvalWorkflow";
 
 export const CREATE_PROJECT_TASK_TOOL_NAME = "create_project_task";
@@ -21,21 +37,28 @@ export const CREATE_PROJECT_TASK_TOOL: ToolDefinition = {
   function: {
     name: CREATE_PROJECT_TASK_TOOL_NAME,
     description:
-      "Create a new task in a Marque Technologies project. This is a protected write operation requiring explicit user approval. Returns a sample demo record.",
+      "Create a new task in a Marque Technologies project by its business name. This is a protected write operation requiring explicit user approval. Returns a sample demo record.",
     parameters: {
       type: "object",
       properties: {
-        projectId: {
+        projectName: {
           type: "string",
-          description: "Project identifier, for example PRJ-104.",
+          minLength: 1,
+          maxLength: 120,
+          description:
+            "The project's business name, for example Business Support Chatbot. Use list_projects first if the name is unclear.",
         },
         title: {
           type: "string",
+          minLength: 1,
+          maxLength: 100,
           description: "Clear, concise title for the task (max 100 characters).",
         },
         description: {
           type: "string",
-          description: "Detailed description of the task requirements (max 500 characters).",
+          maxLength: 500,
+          description:
+            "Detailed description of the task requirements (max 500 characters).",
         },
         priority: {
           type: "string",
@@ -44,14 +67,12 @@ export const CREATE_PROJECT_TASK_TOOL: ToolDefinition = {
         },
         assignee: {
           type: "string",
-          description: "Name of the person or team assigned (max 50 characters).",
-        },
-        approvalId: {
-          type: "string",
-          description: "Server-issued approval token. Omit when proposing an action for approval.",
+          maxLength: 50,
+          description:
+            "Name of the person or team assigned (max 50 characters).",
         },
       },
-      required: ["projectId", "title"],
+      required: ["projectName", "title"],
       additionalProperties: false,
     },
   },
@@ -62,16 +83,25 @@ export const LIST_PROJECT_TASKS_TOOL: ToolDefinition = {
   function: {
     name: LIST_PROJECT_TASKS_TOOL_NAME,
     description:
-      "List all tasks associated with a Marque Technologies project by its project ID. Returns demo/sample data.",
+      "List tasks associated with a Marque Technologies project by its business name. Optionally find a specific task by title. Returns demo/sample data.",
     parameters: {
       type: "object",
       properties: {
-        projectId: {
+        projectName: {
           type: "string",
-          description: "Project identifier, for example PRJ-104.",
+          minLength: 1,
+          maxLength: 120,
+          description:
+            "The project's business name, for example Business Support Chatbot.",
+        },
+        taskName: {
+          type: "string",
+          maxLength: 120,
+          description:
+            "Optional task title or title fragment to find a specific task.",
         },
       },
-      required: ["projectId"],
+      required: ["projectName"],
       additionalProperties: false,
     },
   },
@@ -93,20 +123,83 @@ export const LIST_PROJECT_TASKS_METADATA: ToolMetadata = {
   requiresApproval: false,
 };
 
-const PROJECT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
 const MAX_ARG_LENGTH = 2000;
+const MAX_TASK_NAME_CHARS = 120;
+const CREATE_TASK_KEYS = new Set([
+  "projectName",
+  "projectId",
+  "title",
+  "description",
+  "priority",
+  "assignee",
+]);
+const LIST_TASK_KEYS = new Set(["projectName", "projectId", "taskName"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function invalidArguments(message: string): StructuredToolOutput {
+  return {
+    ok: false,
+    error: { code: "INVALID_ARGUMENTS", message },
+  };
+}
+
+function executionFailed(message: string): StructuredToolOutput {
+  return {
+    ok: false,
+    error: { code: "EXECUTION_FAILED", message },
+  };
+}
+
+function rejectUnknownKeys(
+  parsed: Record<string, unknown>,
+  allowed: ReadonlySet<string>
+): void {
+  for (const key of Object.keys(parsed)) {
+    if (!allowed.has(key)) {
+      throw new Error(`Unknown argument "${key}".`);
+    }
+  }
+}
+
+function projectReferenceFromRecord(
+  parsed: Record<string, unknown>
+): ProjectReference {
+  const hasName = "projectName" in parsed;
+  const hasId = "projectId" in parsed;
+  if (hasName === hasId) {
+    throw new Error("Provide exactly one of projectName or projectId.");
+  }
+
+  const key = hasName ? "projectName" : "projectId";
+  return parseProjectReference(JSON.stringify({ [key]: parsed[key] }));
+}
+
+function parseOptionalTaskName(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") {
+    throw new Error("taskName must be a string.");
+  }
+  const trimmed = value.trim();
+  if (trimmed.length > MAX_TASK_NAME_CHARS) {
+    throw new Error("taskName must not exceed 120 characters.");
+  }
+  return trimmed || undefined;
+}
+
 interface CreateTaskParams {
-  projectId: string;
+  projectReference: ProjectReference;
   title: string;
   description?: string;
-  priority?: "low" | "medium" | "high";
+  priority: "low" | "medium" | "high";
   assignee?: string;
-  approvalId?: string;
+}
+
+interface ListTaskParams {
+  projectReference: ProjectReference;
+  taskName?: string;
 }
 
 function parseCreateTaskArguments(raw: string): CreateTaskParams {
@@ -125,16 +218,15 @@ function parseCreateTaskArguments(raw: string): CreateTaskParams {
     throw new Error("Tool arguments must be a JSON object.");
   }
 
-  const projectId = parsed.projectId;
-  if (typeof projectId !== "string" || !PROJECT_ID_PATTERN.test(projectId.trim())) {
-    throw new Error("projectId is not a valid project identifier.");
-  }
+  rejectUnknownKeys(parsed, CREATE_TASK_KEYS);
+  const projectReference = projectReferenceFromRecord(parsed);
 
   const title = parsed.title;
   if (typeof title !== "string" || !title.trim()) {
     throw new Error("title must be a non-empty string.");
   }
-  if (title.trim().length > 100) {
+  const normalizedTitle = title.trim();
+  if (normalizedTitle.length > 100) {
     throw new Error("title must not exceed 100 characters.");
   }
 
@@ -143,12 +235,20 @@ function parseCreateTaskArguments(raw: string): CreateTaskParams {
     if (typeof parsed.description !== "string") {
       throw new Error("description must be a string.");
     }
-    description = parsed.description.trim().slice(0, 500);
+    const normalizedDescription = parsed.description.trim();
+    if (normalizedDescription.length > 500) {
+      throw new Error("description must not exceed 500 characters.");
+    }
+    description = normalizedDescription || undefined;
   }
 
   let priority: "low" | "medium" | "high" = "medium";
   if ("priority" in parsed && parsed.priority !== undefined) {
-    if (parsed.priority !== "low" && parsed.priority !== "medium" && parsed.priority !== "high") {
+    if (
+      parsed.priority !== "low" &&
+      parsed.priority !== "medium" &&
+      parsed.priority !== "high"
+    ) {
       throw new Error("priority must be 'low', 'medium', or 'high'.");
     }
     priority = parsed.priority;
@@ -159,107 +259,246 @@ function parseCreateTaskArguments(raw: string): CreateTaskParams {
     if (typeof parsed.assignee !== "string") {
       throw new Error("assignee must be a string.");
     }
-    assignee = parsed.assignee.trim().slice(0, 50);
-  }
-
-  let approvalId: string | undefined;
-  if ("approvalId" in parsed && parsed.approvalId !== undefined) {
-    if (typeof parsed.approvalId !== "string" || !parsed.approvalId.trim()) {
-      throw new Error("approvalId must be a non-empty string.");
+    const normalizedAssignee = parsed.assignee.trim();
+    if (normalizedAssignee.length > 50) {
+      throw new Error("assignee must not exceed 50 characters.");
     }
-    approvalId = parsed.approvalId.trim();
+    assignee = normalizedAssignee || undefined;
   }
 
   return {
-    projectId: projectId.trim().toUpperCase(),
-    title: title.trim(),
+    projectReference,
+    title: normalizedTitle,
     description,
     priority,
     assignee,
-    approvalId,
   };
+}
+
+function parseListTaskArguments(raw: string): ListTaskParams {
+  if (typeof raw !== "string" || raw.length > MAX_ARG_LENGTH) {
+    throw new Error("Invalid tool arguments length.");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Tool arguments must be valid JSON.");
+  }
+
+  if (!isRecord(parsed)) {
+    throw new Error("Tool arguments must be a JSON object.");
+  }
+
+  rejectUnknownKeys(parsed, LIST_TASK_KEYS);
+
+  return {
+    projectReference: projectReferenceFromRecord(parsed),
+    taskName: parseOptionalTaskName(parsed.taskName),
+  };
+}
+
+function unresolvedProjectData(
+  resolution: ProjectResolution,
+  reference: ProjectReference
+): Record<string, unknown> {
+  if (resolution.status === "ambiguous") {
+    return {
+      status: "needs_clarification",
+      resource: "project",
+      ...(reference.kind === "name" ? { projectName: reference.value } : {}),
+      choices: resolution.matches.map(toProjectChoice),
+      sampleData: true,
+      message:
+        "More than one project matches that name. Ask the user which project they mean.",
+      notice: DEMO_TASK_NOTICE,
+    };
+  }
+
+  return {
+    status: "not_found",
+    resource: "project",
+    ...(reference.kind === "name" ? { projectName: reference.value } : {}),
+    sampleData: true,
+    message:
+      "No matching project was found in the demo/sample dataset. Do not invent project details.",
+    notice: DEMO_TASK_NOTICE,
+  };
+}
+
+function taskDetails(task: ProjectTask) {
+  return {
+    title: task.title,
+    description: task.description,
+    priority: task.priority,
+    status: task.status,
+    assignee: task.assignee,
+    createdAt: task.createdAt,
+    sampleData: true as const,
+  };
+}
+
+function taskChoice(task: ProjectTask) {
+  return {
+    title: task.title,
+    status: task.status,
+    assignee: task.assignee,
+  };
+}
+
+function approvalMatchesCreateTask(
+  approval: { toolName: string; rawArguments: string },
+  params: CreateTaskParams,
+  project: ProjectStatus
+): boolean {
+  if (approval.toolName !== CREATE_PROJECT_TASK_TOOL_NAME) {
+    return false;
+  }
+
+  try {
+    const approved = parseCreateTaskArguments(approval.rawArguments);
+    const approvedResolution = resolveProjectReference(
+      approved.projectReference
+    );
+    if (
+      approvedResolution.status !== "resolved" ||
+      approvedResolution.project.projectId !== project.projectId
+    ) {
+      return false;
+    }
+
+    return (
+      approved.title === params.title &&
+      (approved.description ?? "") === (params.description ?? "") &&
+      approved.priority === params.priority &&
+      (approved.assignee ?? "") === (params.assignee ?? "")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function executedTaskData(task: ProjectTask, project: ProjectStatus) {
+  return {
+    status: "executed" as const,
+    sampleData: true as const,
+    notice: DEMO_TASK_NOTICE,
+    projectName: project.name,
+    task: taskDetails(task),
+  };
+}
+
+function executeApprovedCreateTask(
+  params: CreateTaskParams,
+  project: ProjectStatus,
+  approvalId: string,
+  context: ToolExecutionContext
+): StructuredToolOutput {
+  const approval = getApprovalRequest(approvalId);
+  if (!approval) {
+    return invalidArguments("The approval request was not found or has expired.");
+  }
+
+  if (approval.status === "executed" && isRecord(approval.executionResult)) {
+    return {
+      ok: true,
+      data: approval.executionResult,
+    };
+  }
+
+  if (approval.status !== "approved") {
+    return executionFailed(
+      "This operation can no longer be executed because its approval is not active."
+    );
+  }
+
+  if (approval.toolName !== CREATE_PROJECT_TASK_TOOL_NAME) {
+    return invalidArguments("The approval is not valid for this operation.");
+  }
+
+  if (approval.requestId !== context.requestId) {
+    return invalidArguments("The approval is not valid for this request.");
+  }
+
+  if (!approvalMatchesCreateTask(approval, params, project)) {
+    return invalidArguments(
+      "The approval does not match the requested task details."
+    );
+  }
+
+  try {
+    beginApprovalExecution(approval.id);
+  } catch {
+    return executionFailed("The approval could not be executed.");
+  }
+
+  let task: ProjectTask;
+  try {
+    task = createTask({
+      projectId: project.projectId,
+      title: params.title,
+      description: params.description,
+      priority: params.priority,
+      assignee: params.assignee,
+    });
+  } catch (error) {
+    markApprovalFailed(
+      approval.id,
+      error instanceof Error ? error.message : "Task creation failed."
+    );
+    return executionFailed("The approved task could not be created.");
+  }
+
+  const data = executedTaskData(task, project);
+  try {
+    markApprovalExecuted(approval.id, data);
+  } catch {}
+
+  return { ok: true, data };
 }
 
 /**
  * Executes the create_project_task tool.
- * Implements two-stage approval: creates a pending approval if not yet approved,
- * or completes the task creation if a valid approved token is present.
+ * Proposes the operation for approval. Execution is only possible when the
+ * server-supplied execution context carries a verified approval capability.
  */
 export function executeCreateProjectTask(
   rawArguments: string,
   context: ToolExecutionContext
 ): StructuredToolOutput {
+  let params: CreateTaskParams;
   try {
-    const params = parseCreateTaskArguments(rawArguments);
+    params = parseCreateTaskArguments(rawArguments);
+  } catch (error) {
+    return invalidArguments(
+      error instanceof Error ? error.message : "Invalid tool arguments."
+    );
+  }
 
-    // Verify target project exists in demo dataset
-    const project = getProjectStatus(params.projectId);
-    if (!project) {
-      return {
-        ok: true,
-        data: {
-          found: false,
-          projectId: params.projectId,
-          sampleData: true,
-          notice: `Target project "${params.projectId}" not found in demo data. Task cannot be created.`,
-        },
-      };
-    }
+  const resolution = resolveProjectReference(params.projectReference);
+  if (resolution.status !== "resolved") {
+    return {
+      ok: true,
+      data: unresolvedProjectData(resolution, params.projectReference),
+    };
+  }
 
-    // STAGE 2: If an approvalId is provided, execute the approved action
-    if (params.approvalId) {
-      const approval = getApprovalRequest(params.approvalId);
-      if (!approval) {
-        return {
-          ok: false,
-          error: {
-            code: "INVALID_ARGUMENTS",
-            message: `Approval request "${params.approvalId}" not found or expired.`,
-          },
-        };
-      }
+  const project = resolution.project;
+  const approvalId = context.approvalId?.trim();
+  if (approvalId) {
+    return executeApprovedCreateTask(params, project, approvalId, context);
+  }
 
-      if (approval.status !== "approved") {
-        return {
-          ok: false,
-          error: {
-            code: "EXECUTION_FAILED",
-            message: `Operation cannot proceed because approval status is "${approval.status}".`,
-          },
-        };
-      }
-
-      // Mark executed (prevents duplicate execution / replay attack)
-      markApprovalExecuted(approval.id);
-
-      const task: ProjectTask = createTask({
-        projectId: params.projectId,
-        title: params.title,
-        description: params.description,
-        priority: params.priority,
-        assignee: params.assignee,
-      });
-
-      return {
-        ok: true,
-        data: {
-          status: "executed",
-          sampleData: true,
-          notice: DEMO_TASK_NOTICE,
-          task,
-        },
-      };
-    }
-
-    // STAGE 1: Protected operation requires explicit user approval
-    const summary = `Create ${params.priority} priority task "${params.title}" in project ${params.projectId}`;
+  const summary = `Create ${params.priority} priority task "${params.title}" in project "${project.name}"`;
+  try {
     const approval = createApprovalRequest({
       requestId: context.requestId,
       toolName: CREATE_PROJECT_TASK_TOOL_NAME,
       rawArguments,
       summary,
       details: {
-        projectId: params.projectId,
+        projectName: project.name,
         title: params.title,
         description: params.description ?? "",
         priority: params.priority,
@@ -275,18 +514,13 @@ export function executeCreateProjectTask(
         action: CREATE_PROJECT_TASK_TOOL_NAME,
         summary,
         sampleData: true,
-        notice: "This operation requires explicit user approval before execution.",
+        notice:
+          "This operation requires explicit user approval before execution.",
         details: approval.details,
       },
     };
-  } catch (error) {
-    return {
-      ok: false,
-      error: {
-        code: "INVALID_ARGUMENTS",
-        message: error instanceof Error ? error.message : "Invalid tool arguments.",
-      },
-    };
+  } catch {
+    return executionFailed("The approval request could not be created.");
   }
 }
 
@@ -296,43 +530,82 @@ export function executeCreateProjectTask(
 export function executeListProjectTasks(
   rawArguments: string
 ): StructuredToolOutput {
+  let params: ListTaskParams;
   try {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(rawArguments);
-    } catch {
-      throw new Error("Tool arguments must be valid JSON.");
-    }
+    params = parseListTaskArguments(rawArguments);
+  } catch (error) {
+    return invalidArguments(
+      error instanceof Error ? error.message : "Invalid tool arguments."
+    );
+  }
 
-    if (!isRecord(parsed)) {
-      throw new Error("Tool arguments must be a JSON object.");
-    }
-
-    const projectId = parsed.projectId;
-    if (typeof projectId !== "string" || !projectId.trim()) {
-      throw new Error("projectId is required.");
-    }
-
-    const normalized = projectId.trim().toUpperCase();
-    const tasks = getTasksForProject(normalized);
-
+  const resolution = resolveProjectReference(params.projectReference);
+  if (resolution.status !== "resolved") {
     return {
       ok: true,
-      data: {
-        projectId: normalized,
-        tasks,
-        totalTasks: tasks.length,
-        sampleData: true,
-        notice: DEMO_TASK_NOTICE,
-      },
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      error: {
-        code: "INVALID_ARGUMENTS",
-        message: error instanceof Error ? error.message : "Invalid tool arguments.",
-      },
+      data: unresolvedProjectData(resolution, params.projectReference),
     };
   }
+
+  const project = resolution.project;
+  let tasks = getTasksForProject(project.projectId);
+
+  if (params.taskName) {
+    const matches = findNameMatches(
+      params.taskName,
+      tasks,
+      (task) => task.title
+    );
+
+    if (matches.length === 0) {
+      return {
+        ok: true,
+        data: {
+          status: "not_found",
+          resource: "task",
+          projectName: project.name,
+          taskName: params.taskName,
+          choices: [],
+          tasks: [],
+          totalTasks: 0,
+          sampleData: true,
+          message:
+            "No matching task was found for that project in the demo/sample dataset.",
+          notice: DEMO_TASK_NOTICE,
+        },
+      };
+    }
+
+    if (matches.length > 1) {
+      return {
+        ok: true,
+        data: {
+          status: "needs_clarification",
+          resource: "task",
+          projectName: project.name,
+          taskName: params.taskName,
+          choices: matches.map(taskChoice),
+          sampleData: true,
+          message:
+            "More than one task matches that name. Ask the user which task they mean.",
+          notice: DEMO_TASK_NOTICE,
+        },
+      };
+    }
+
+    tasks = matches;
+  }
+
+  return {
+    ok: true,
+    data: {
+      status: "ok",
+      projectName: project.name,
+      ...(params.taskName ? { taskName: params.taskName } : {}),
+      tasks: tasks.map(taskDetails),
+      totalTasks: tasks.length,
+      sampleData: true,
+      notice: DEMO_TASK_NOTICE,
+    },
+  };
 }

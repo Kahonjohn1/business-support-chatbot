@@ -33,10 +33,8 @@ import {
 } from "@/tools/registry";
 import type { AuthorizationContext } from "@/lib/permissions";
 import {
-  GET_PROJECT_STATUS_TOOL_NAME,
   NO_TOOL_USE_INSTRUCTION,
   TOOL_USE_INSTRUCTION,
-  ensureDemoDataDisclosure,
 } from "@/tools/projectStatusTool";
 
 // Server-only Groq chat-completions service (OpenAI-compatible HTTP API). The
@@ -364,12 +362,13 @@ export async function generateAssistantReply(
   // signal, timeout, and output cap as the original single-call path.
   const attempt = async (modelName: string): Promise<AssistantReplyResult> => {
     const t0 = Date.now();
-    const toolEnabled = supportsToolCalling(modelName);
+    const toolsAvailable =
+      supportsToolCalling(modelName) && REGISTERED_TOOLS.length > 0;
     const attemptMessages: GroqMessage[] = [
       {
         role: "system",
         content: `${systemInstruction}\n\n${
-          toolEnabled ? TOOL_USE_INSTRUCTION : NO_TOOL_USE_INSTRUCTION
+          toolsAvailable ? TOOL_USE_INSTRUCTION : NO_TOOL_USE_INSTRUCTION
         }`,
       },
       ...groqMessages.slice(1),
@@ -384,7 +383,7 @@ export async function generateAssistantReply(
         messages: messagesToSend,
         max_completion_tokens: requestOptions.maxCompletionTokens,
       };
-      if (toolEnabled) {
+      if (toolsAvailable) {
         body.tools = REGISTERED_TOOLS;
         body.tool_choice = toolChoice ?? "auto";
       }
@@ -419,7 +418,7 @@ export async function generateAssistantReply(
       const message = payload?.choices?.[0]?.message;
       const content =
         typeof message?.content === "string" ? message.content : null;
-      const toolCalls = toolEnabled ? parseToolCalls(message?.tool_calls) : [];
+      const toolCalls = toolsAvailable ? parseToolCalls(message?.tool_calls) : [];
       return {
         role: "assistant",
         content,
@@ -432,7 +431,7 @@ export async function generateAssistantReply(
 
       let reply: string;
       let pendingApproval: AssistantReplyResult["pendingApproval"];
-      if (toolEnabled) {
+      if (toolsAvailable) {
         const loopResult = await runToolLoop<GroqMessage>({
           messages: attemptMessages,
           tools: [...REGISTERED_TOOLS],
@@ -474,10 +473,9 @@ export async function generateAssistantReply(
               }));
             } catch {}
           },
+          auth: grounding?.auth,
         });
-        reply = loopResult.usedToolNames.includes(GET_PROJECT_STATUS_TOOL_NAME)
-          ? ensureDemoDataDisclosure(loopResult.content)
-          : loopResult.content;
+        reply = loopResult.content;
         pendingApproval = loopResult.pendingApproval;
       } else {
         const assistantMessage = await requestCompletion(attemptMessages);

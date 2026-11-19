@@ -21,6 +21,17 @@ export function appendChatMessage(
   return [...messages, message];
 }
 
+/** Returns a new array with the matching message updated (input is not mutated). */
+export function updateChatMessage(
+  messages: readonly ChatMessage[],
+  id: string,
+  updates: Partial<ChatMessage>
+): ChatMessage[] {
+  return messages.map((message) =>
+    message.id === id ? { ...message, ...updates } : message
+  );
+}
+
 /** A cleared conversation is empty; nothing is retained. */
 export function clearChatMessages(): ChatMessage[] {
   return [];

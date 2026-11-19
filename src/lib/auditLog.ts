@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 /**
  * Audit logging service for tool execution, authorization decisions, and approvals.
  *
@@ -12,6 +14,7 @@ export type AuditOperationStatus =
   | "pending_approval"
   | "approved"
   | "rejected"
+  | "executing"
   | "executed"
   | "failed";
 
@@ -46,8 +49,19 @@ const inMemoryAuditLogs: AuditEvent[] = [];
 
 const SENSITIVE_KEY_PATTERN = /key|token|secret|auth|password|bearer|cookie/i;
 
+function sanitizeValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeValue(entry));
+  }
+  if (typeof value === "object" && value !== null) {
+    return sanitizeDetails(value as Record<string, unknown>);
+  }
+  return value;
+}
+
 /**
  * Sanitizes arbitrary details objects so sensitive keys are never persisted or printed.
+ * Nested objects and arrays are traversed so secrets cannot hide in list entries.
  */
 function sanitizeDetails(
   details?: Record<string, unknown>
@@ -56,13 +70,9 @@ function sanitizeDetails(
 
   const sanitized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(details)) {
-    if (SENSITIVE_KEY_PATTERN.test(key)) {
-      sanitized[key] = "[REDACTED]";
-    } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      sanitized[key] = sanitizeDetails(value as Record<string, unknown>);
-    } else {
-      sanitized[key] = value;
-    }
+    sanitized[key] = SENSITIVE_KEY_PATTERN.test(key)
+      ? "[REDACTED]"
+      : sanitizeValue(value);
   }
   return sanitized;
 }
@@ -74,7 +84,7 @@ export function recordAuditEvent(
   event: Omit<AuditEvent, "id" | "timestamp"> & { timestamp?: string }
 ): AuditEvent {
   const fullEvent: AuditEvent = {
-    id: `audit_${Math.random().toString(36).slice(2, 10)}_${Date.now()}`,
+    id: `audit_${randomBytes(12).toString("base64url")}`,
     timestamp: event.timestamp || new Date().toISOString(),
     requestId: event.requestId,
     toolName: event.toolName,

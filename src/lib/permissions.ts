@@ -18,9 +18,10 @@ export type ToolPermission =
   | "admin:all";
 
 export interface AuthorizationContext {
+  readonly userId: string;
   readonly role: UserRole;
   readonly permissions?: readonly ToolPermission[];
-  readonly isDemo: true;
+  readonly isDemo: boolean;
 }
 
 const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly ToolPermission[]>> = {
@@ -30,16 +31,11 @@ const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly ToolPermission[]>> = 
 };
 
 const TOOL_PERMISSION_REQUIREMENTS: Readonly<Record<string, ToolPermission>> = {
+  list_projects: "projects:read",
   get_project_status: "projects:read",
   list_project_tasks: "tasks:read",
   create_project_task: "tasks:write",
 };
-
-/** Default demo authorization context used for local interactive evaluation. */
-export const DEFAULT_DEMO_AUTH_CONTEXT: AuthorizationContext = Object.freeze({
-  role: "operator",
-  isDemo: true,
-});
 
 export interface PermissionCheckResult {
   readonly permitted: boolean;
@@ -91,10 +87,11 @@ export function checkPermission(
     };
   }
 
+  // Role permissions are authoritative. A caller-supplied permission list must
+  // never be able to elevate a role (e.g. viewer -> tasks:write).
   const hasPermission =
     rolePermissions.includes(required) ||
-    rolePermissions.includes("admin:all") ||
-    (auth.permissions?.includes(required) ?? false);
+    rolePermissions.includes("admin:all");
 
   if (!hasPermission) {
     return {

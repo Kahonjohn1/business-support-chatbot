@@ -1,4 +1,6 @@
 import type { MessageRole } from "@/types/chat";
+import { apiErrorFromException } from "@/lib/http/api";
+import { requireUserAuthorizationContext } from "@/lib/workspace/server";
 import {
   MAX_ATTACHMENTS,
   MAX_BODY_BYTES,
@@ -159,6 +161,13 @@ function parseMessages(payload: unknown): MessagesResult {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  let authContext;
+  try {
+    authContext = await requireUserAuthorizationContext();
+  } catch (error) {
+    return apiErrorFromException(error);
+  }
+
   const tReq0 = Date.now();
   const reqId = "api" + Math.random().toString(36).slice(2,8);
   const rate = rateLimiter.check(getClientKey(request));
@@ -307,6 +316,7 @@ export async function POST(request: Request): Promise<Response> {
       referenceMaterial,
       groundingInstruction,
       requestId: reqId,
+      auth: authContext,
     });
     const grounded = buildGroundedAnswer(
       reply.content,

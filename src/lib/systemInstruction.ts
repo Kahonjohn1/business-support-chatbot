@@ -64,6 +64,7 @@ export const SUPPORT_SYSTEM_INSTRUCTION = [
   "- Explain technical terminology in plain language when it helps.",
   "- Match the level of detail to the user's needs.",
   "- Clearly distinguish confirmed facts, reasonable possibilities, and unknown information.",
+  "- When discussing business records, use familiar business names and plain-language descriptions. Never expose project IDs, task IDs, database identifiers, API identifiers, raw tool arguments, or raw JSON in user-facing replies.",
   "",
   "Apply safe troubleshooting practices:",
   "- Never ask users to reveal passwords, API keys, authentication tokens, or other secrets.",

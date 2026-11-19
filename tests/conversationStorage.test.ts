@@ -245,13 +245,115 @@ test("a corrupted stored citation is dropped instead of shown", () => {
   assert.deepEqual(restored[0].sources, [{ id: "KB-007", title: "Support" }]);
 });
 
-test("the conversation hook restores and saves through conversationStorage", () => {
+test("approval metadata and terminal status survive a round trip", () => {
+  installSessionStorage();
+  const messages = [
+    message({
+      id: "m1",
+      role: "assistant",
+      content: "Approve this task?",
+      pendingApproval: {
+        approvalId: "appr_pending",
+        toolName: "create_project_task",
+        summary: 'Create task "Prepare launch checklist"',
+        details: {
+          projectName: "Business Support Chatbot",
+          title: "Prepare launch checklist",
+        },
+      },
+      approvalStatus: "pending",
+    }),
+    message({
+      id: "m2",
+      role: "assistant",
+      content: "The operation failed.",
+      pendingApproval: {
+        approvalId: "appr_failed",
+        toolName: "create_project_task",
+        summary: 'Create task "Broken"',
+        details: {
+          projectName: "Business Support Chatbot",
+          title: "Broken",
+        },
+      },
+      approvalStatus: "failed",
+    }),
+  ];
+
+  saveConversation(messages);
+
+  assert.deepEqual(loadConversation(), messages);
+});
+
+test("a corrupted stored approval is dropped without losing the message", () => {
+  installSessionStorage({
+    [STORAGE_KEY]: JSON.stringify({
+      version: 1,
+      messages: [
+        {
+          id: "m1",
+          role: "assistant",
+          content: "Approve this task?",
+          createdAt: "2026-10-19T10:00:00.000Z",
+          pendingApproval: {
+            approvalId: "",
+            toolName: "create_project_task",
+            summary: "Create a task",
+            details: {},
+          },
+          approvalStatus: "pending",
+        },
+      ],
+    }),
+  });
+
+  const restored = loadConversation();
+  assert.ok(restored);
+  assert.equal("pendingApproval" in restored[0], false);
+  assert.equal("approvalStatus" in restored[0], false);
+});
+
+test("the conversation hook restores and saves with the authenticated user", () => {
   const hookSource = readFileSync(
     new URL("../src/hooks/useChatMessages.ts", import.meta.url),
     "utf8"
   );
 
-  assert.match(hookSource, /loadConversation\(\)/);
-  assert.match(hookSource, /saveConversation\(messages\)/);
-  assert.match(hookSource, /clearStoredConversation\(\)/);
+  assert.match(hookSource, /loadConversationFor\(storageKey, userId\)/);
+  assert.match(hookSource, /saveConversationFor\(nextMessages, storageKey, userId\)/);
+  assert.match(hookSource, /clearStoredConversationFor\(storageKey, userId\)/);
+});
+
+test("browser conversation storage is scoped by authenticated user", () => {
+  const { data } = installSessionStorage();
+  const messages = [message({ id: "m1", content: "private to user one" })];
+
+  saveConversation(messages, "new", "user_1");
+
+  assert.deepEqual(loadConversation("new", "user_1"), messages);
+  assert.equal(loadConversation("new", "user_2"), null);
+  assert.equal(data.has(`${STORAGE_KEY}:user_1:new`), true);
+});
+
+test("legacy unscoped browser storage is not readable by an authenticated user", () => {
+  installSessionStorage({
+    [STORAGE_KEY]: JSON.stringify({
+      version: 1,
+      messages: [message({ id: "m1", content: "old shared cache" })],
+    }),
+  });
+
+  assert.equal(loadConversation("new", "user_1"), null);
+});
+
+test("clearing one user's storage does not affect another user's cache", () => {
+  const { data } = installSessionStorage();
+
+  saveConversation([message({ id: "m1" })], "new", "user_1");
+  saveConversation([message({ id: "m2" })], "new", "user_2");
+  clearStoredConversation("new", "user_1");
+
+  assert.equal(data.has(`${STORAGE_KEY}:user_1:new`), false);
+  assert.equal(data.has(`${STORAGE_KEY}:user_2:new`), true);
+  assert.ok(loadConversation("new", "user_2"));
 });

@@ -1,14 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  GET_PROJECT_STATUS_TOOL,
-  GET_PROJECT_STATUS_TOOL_NAME,
-} from "../src/tools/projectStatusTool.ts";
+import { GET_PROJECT_STATUS_TOOL_NAME } from "../src/tools/projectStatusTool.ts";
 import {
   REGISTERED_TOOLS,
   ToolRegistry,
-  executeRegisteredTool,
+  executeRegisteredTool as executeBase,
   formatToolResultForModel,
   toolRegistry,
   validateToolHandlerResult,
@@ -16,7 +13,17 @@ import {
   type ToolExecutionContext,
 } from "../src/tools/registry.ts";
 
-test("central tool registry registers get_project_status", () => {
+const VIEWER_AUTH = { userId: "user_test", role: "viewer", isDemo: false } as const;
+
+function execute(
+  toolName: string,
+  rawArguments: string,
+  context: ToolExecutionContext = { requestId: "req_registry_test" }
+): ReturnType<typeof executeBase> {
+  return executeBase(toolName, rawArguments, { auth: VIEWER_AUTH, ...context });
+}
+
+test("central tool registry retains the demo tool implementation", () => {
   assert.equal(toolRegistry.has(GET_PROJECT_STATUS_TOOL_NAME), true);
 
   const tool = toolRegistry.get(GET_PROJECT_STATUS_TOOL_NAME);
@@ -31,12 +38,8 @@ test("central tool registry registers get_project_status", () => {
   });
 });
 
-test("model-facing REGISTERED_TOOLS is derived directly from the registry", () => {
-  const definitions = toolRegistry.getDefinitions();
-  assert.equal(REGISTERED_TOOLS.length, definitions.length);
-  assert.equal(REGISTERED_TOOLS.length, 3);
-  assert.equal(REGISTERED_TOOLS[0], GET_PROJECT_STATUS_TOOL);
-  assert.equal(REGISTERED_TOOLS[0].function.name, GET_PROJECT_STATUS_TOOL_NAME);
+test("unsafe demo tools are not exposed to the model", () => {
+  assert.deepEqual(REGISTERED_TOOLS, []);
   assert.ok(Object.isFrozen(REGISTERED_TOOLS), "REGISTERED_TOOLS should be frozen");
 });
 
@@ -47,9 +50,9 @@ test("successful execution: returns structured result, safe content, and executi
     timestamp: Date.now(),
   };
 
-  const result = executeRegisteredTool(
+  const result = execute(
     GET_PROJECT_STATUS_TOOL_NAME,
-    JSON.stringify({ projectId: "PRJ-104" }),
+    JSON.stringify({ projectName: "Business Support Chatbot" }),
     context
   );
 
@@ -60,18 +63,18 @@ test("successful execution: returns structured result, safe content, and executi
   const data = result.data as {
     found: boolean;
     sampleData: boolean;
-    project: { projectId: string; name: string };
+    project: { name: string };
   };
   assert.equal(data.found, true);
   assert.equal(data.sampleData, true);
-  assert.equal(data.project.projectId, "PRJ-104");
   assert.equal(data.project.name, "Business Support Chatbot");
 
   // Model-facing content
   const payload = JSON.parse(result.content);
   assert.equal(payload.found, true);
   assert.equal(payload.sampleData, true);
-  assert.equal(payload.project.projectId, "PRJ-104");
+  assert.equal(payload.project.name, "Business Support Chatbot");
+  assert.equal("projectId" in payload.project, false);
 
   // Metadata / tracing (not in content)
   assert.ok(result.meta);
@@ -119,7 +122,7 @@ test("known tool failure: unknown tool name returns UNKNOWN_TOOL error code", ()
   assert.equal(executed, false, "No tool handler should be invoked");
 
   // Central executeRegisteredTool also returns UNKNOWN_TOOL
-  const centralResult = executeRegisteredTool("unregistered_tool", "{}", context);
+  const centralResult = execute("unregistered_tool", "{}", context);
   assert.equal(centralResult.ok, false);
   if (centralResult.ok) assert.fail("Unknown tool should fail");
   assert.equal(centralResult.code, "UNKNOWN_TOOL");
@@ -133,7 +136,7 @@ test("known tool failure: invalid arguments return INVALID_ARGUMENTS error code"
     requestId: "req_test_invalid_args",
   };
 
-  const malformedJsonResult = executeRegisteredTool(
+  const malformedJsonResult = execute(
     GET_PROJECT_STATUS_TOOL_NAME,
     "{ invalid json }",
     context
@@ -145,7 +148,7 @@ test("known tool failure: invalid arguments return INVALID_ARGUMENTS error code"
   assert.ok(malformedJsonResult.meta);
   assert.equal(malformedJsonResult.meta.requestId, "req_test_invalid_args");
 
-  const typeMismatchResult = executeRegisteredTool(
+  const typeMismatchResult = execute(
     GET_PROJECT_STATUS_TOOL_NAME,
     JSON.stringify({ projectId: 12345 }),
     context
@@ -155,7 +158,7 @@ test("known tool failure: invalid arguments return INVALID_ARGUMENTS error code"
   assert.equal(typeMismatchResult.code, "INVALID_ARGUMENTS");
   assert.match(typeMismatchResult.error, /string/i);
 
-  const extraKeysResult = executeRegisteredTool(
+  const extraKeysResult = execute(
     GET_PROJECT_STATUS_TOOL_NAME,
     JSON.stringify({ projectId: "PRJ-104", extra: true }),
     context
@@ -344,4 +347,34 @@ test("validateToolHandlerResult accepts both data and string content", () => {
     assert.equal(withStructuredError.error.code, "INVALID_ARGUMENTS");
     assert.equal(withStructuredError.error.message, "Bad arg");
   }
+});
+
+test("permission-gated tools fail closed without a verified user identity", () => {
+  const result = executeBase(
+    "create_project_task",
+    JSON.stringify({
+      projectName: "Business Support Chatbot",
+      title: "No authorization",
+    }),
+    { requestId: "req_no_auth" }
+  );
+
+  assert.equal(result.ok, false);
+  if (result.ok) assert.fail("Missing authorization must be denied");
+  assert.equal(result.code, "PERMISSION_DENIED");
+  assert.match(result.error, /verified user identity/i);
+});
+
+test("model-supplied user ids cannot override the verified context", () => {
+  const result = execute(
+    GET_PROJECT_STATUS_TOOL_NAME,
+    JSON.stringify({
+      projectName: "Business Support Chatbot",
+      userId: "attacker",
+    })
+  );
+
+  assert.equal(result.ok, false);
+  if (result.ok) assert.fail("Untrusted userId must be rejected");
+  assert.equal(result.code, "INVALID_ARGUMENTS");
 });

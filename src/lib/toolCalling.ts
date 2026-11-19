@@ -82,6 +82,11 @@ export interface ToolExecutionContext {
   readonly toolCallId?: string;
   readonly timestamp?: number;
   readonly auth?: unknown;
+  /**
+   * Server-only approval capability. Never populated from model-supplied tool
+   * arguments; only the approval endpoint may set it after a verified decision.
+   */
+  readonly approvalId?: string;
 }
 
 export interface ToolLoopOptions<TMessage extends { role: string }> {
@@ -100,6 +105,7 @@ export interface ToolLoopOptions<TMessage extends { role: string }> {
   maxToolCalls?: number;
   onToolResult?: (event: ToolLoopEvent) => void;
   requestId?: string;
+  auth?: unknown;
 }
 
 export interface ToolLoopResult {
@@ -251,6 +257,7 @@ export async function runToolLoop<TMessage extends { role: string }>(
             requestId: options.requestId ?? "unknown-req",
             toolCallId: toolCall.id,
             timestamp: Date.now(),
+            ...(options.auth !== undefined ? { auth: options.auth } : {}),
           }
         );
       } catch {

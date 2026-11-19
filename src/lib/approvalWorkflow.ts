@@ -1,21 +1,27 @@
+import { randomBytes } from "node:crypto";
 import { recordAuditEvent } from "@/lib/auditLog";
 
 /**
  * Server-side approval management for sensitive/protected business operations.
  *
  * Guarantees:
- * - AI cannot self-approve.
- * - Approval state is persisted server-side.
+ * - AI cannot self-approve: an approval token is only accepted through the
+ *   server-side approval execution path, never from model-supplied arguments.
+ * - Approval state is held server-side for the lifetime of the process.
  * - Expired or rejected requests cannot execute.
- * - Replay / duplicate execution protection.
+ * - Approval tokens are opaque, cryptographically random capabilities.
+ * - Replay / duplicate execution protection, with a cached result so retries
+ *   are idempotent rather than creating a second operation.
  */
 
 export type ApprovalStatus =
   | "pending"
   | "approved"
   | "rejected"
+  | "executing"
   | "executed"
-  | "expired";
+  | "expired"
+  | "failed";
 
 export interface ApprovalRequest {
   readonly id: string;
@@ -29,11 +35,28 @@ export interface ApprovalRequest {
   readonly expiresAt: number;
   decisionBy?: string;
   decisionTimestamp?: number;
+  executionStartedAt?: number;
   executionTimestamp?: number;
+  /** Result of a successful execution, retained for idempotent retries. */
+  executionResult?: unknown;
+  failureReason?: string;
 }
 
 const DEFAULT_APPROVAL_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const APPROVAL_TOKEN_BYTES = 32;
 const inMemoryApprovals = new Map<string, ApprovalRequest>();
+
+function generateApprovalId(): string {
+  return `appr_${randomBytes(APPROVAL_TOKEN_BYTES).toString("base64url")}`;
+}
+
+function requireApproval(id: string): ApprovalRequest {
+  const request = getApprovalRequest(id);
+  if (!request) {
+    throw new Error(`Approval request "${id}" was not found.`);
+  }
+  return request;
+}
 
 /**
  * Creates a new pending approval request on the server.
@@ -47,7 +70,10 @@ export function createApprovalRequest(params: {
   ttlMs?: number;
 }): ApprovalRequest {
   const now = Date.now();
-  const id = `appr_${Math.random().toString(36).slice(2, 10)}_${now}`;
+  let id = generateApprovalId();
+  while (inMemoryApprovals.has(id)) {
+    id = generateApprovalId();
+  }
   const ttl = params.ttlMs ?? DEFAULT_APPROVAL_TTL_MS;
 
   const request: ApprovalRequest = {
@@ -114,9 +140,10 @@ export function submitApprovalDecision(
   decision: "approve" | "reject",
   decisionBy: string = "user"
 ): ApprovalRequest {
-  const request = getApprovalRequest(id);
-  if (!request) {
-    throw new Error(`Approval request "${id}" was not found.`);
+  const request = requireApproval(id);
+
+  if (request.status === "expired") {
+    throw new Error(`Approval request "${id}" has expired.`);
   }
 
   if (request.status !== "pending") {
@@ -151,17 +178,15 @@ export function submitApprovalDecision(
 }
 
 /**
- * Marks an approved request as executed to prevent replay / duplicate execution.
+ * Reserves an approved request for execution. A second call cannot start the
+ * same approval again, which prevents concurrent duplicate writes.
  */
-export function markApprovalExecuted(id: string): ApprovalRequest {
-  const request = getApprovalRequest(id);
-  if (!request) {
-    throw new Error(`Approval request "${id}" was not found.`);
-  }
+export function beginApprovalExecution(id: string): ApprovalRequest {
+  const request = requireApproval(id);
 
-  if (request.status === "executed") {
+  if (request.status === "executing") {
     throw new Error(
-      `Approval request "${id}" has already been executed. Replay prevented.`
+      `Approval request "${id}" is already being executed.`
     );
   }
 
@@ -171,8 +196,52 @@ export function markApprovalExecuted(id: string): ApprovalRequest {
     );
   }
 
+  request.status = "executing";
+  request.executionStartedAt = Date.now();
+
+  recordAuditEvent({
+    requestId: request.requestId,
+    toolName: request.toolName,
+    operation: "approval_execution",
+    status: "executing",
+    approvalDecision: {
+      approvalId: id,
+      approved: true,
+    },
+    details: {
+      summary: request.summary,
+    },
+  });
+
+  return request;
+}
+
+/**
+ * Marks an executing (or approved) request as executed and caches the result.
+ * Another call for the same approval is rejected; callers handle cached-result
+ * idempotency before reaching this point.
+ */
+export function markApprovalExecuted(
+  id: string,
+  executionResult?: unknown
+): ApprovalRequest {
+  const request = requireApproval(id);
+
+  if (request.status === "executed") {
+    throw new Error(
+      `Approval request "${id}" has already been executed. Replay prevented.`
+    );
+  }
+
+  if (request.status !== "executing" && request.status !== "approved") {
+    throw new Error(
+      `Approval request "${id}" cannot be executed because status is "${request.status}".`
+    );
+  }
+
   request.status = "executed";
   request.executionTimestamp = Date.now();
+  request.executionResult = executionResult;
 
   recordAuditEvent({
     requestId: request.requestId,
@@ -185,6 +254,47 @@ export function markApprovalExecuted(id: string): ApprovalRequest {
     },
     details: {
       summary: request.summary,
+    },
+  });
+
+  return request;
+}
+
+/**
+ * Marks a failed execution as terminal so it cannot be retried with the same
+ * approval token. The user must prepare a new request.
+ */
+export function markApprovalFailed(
+  id: string,
+  reason: string
+): ApprovalRequest {
+  const request = requireApproval(id);
+
+  if (request.status === "failed") {
+    return request;
+  }
+
+  if (request.status !== "executing" && request.status !== "approved") {
+    throw new Error(
+      `Approval request "${id}" cannot be marked failed because status is "${request.status}".`
+    );
+  }
+
+  request.status = "failed";
+  request.failureReason = reason.slice(0, 500);
+
+  recordAuditEvent({
+    requestId: request.requestId,
+    toolName: request.toolName,
+    operation: "approval_execution",
+    status: "failed",
+    approvalDecision: {
+      approvalId: id,
+      approved: true,
+    },
+    details: {
+      summary: request.summary,
+      reason: request.failureReason,
     },
   });
 
