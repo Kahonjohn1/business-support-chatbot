@@ -55,8 +55,8 @@ interface SidebarItem {
 }
 
 const WORKSPACE_ITEMS: readonly SidebarItem[] = [
-  { label: "Projects", icon: Folder, comingSoon: true },
-  { label: "Tasks", icon: ListChecks, comingSoon: true },
+  { label: "Projects", icon: Folder, href: "/projects" },
+  { label: "Tasks", icon: ListChecks, href: "/tasks" },
 ];
 
 const COLLAPSED_KEY = "marque-support:sidebar-collapsed";
@@ -433,17 +433,44 @@ function AppShellContent({
               Workspace
             </p>
           ) : null}
-          {WORKSPACE_ITEMS.map((item) => (
-            <button
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-              key={item.label}
-              title={collapsed ? `${item.label} (coming soon)` : "Coming soon"}
-              type="button"
-            >
-              <item.icon size={18} />
-              {!collapsed ? <span>{item.label}</span> : null}
-            </button>
-          ))}
+          {WORKSPACE_ITEMS.map((item) => {
+            const isActive = item.href
+              ? pathname === item.href || pathname.startsWith(`${item.href}/`)
+              : false;
+            const className = `flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted hover:text-foreground ${
+              isActive
+                ? "bg-accent font-medium text-accent-foreground"
+                : "text-muted-foreground"
+            }`;
+
+            if (!item.href) {
+              return (
+                <button
+                  className={className}
+                  key={item.label}
+                  title={item.label}
+                  type="button"
+                >
+                  <item.icon size={18} />
+                  {!collapsed ? <span>{item.label}</span> : null}
+                </button>
+              );
+            }
+
+            return (
+              <Link
+                aria-current={isActive ? "page" : undefined}
+                className={className}
+                href={item.href}
+                key={item.label}
+                onClick={closeMobile}
+                title={collapsed ? item.label : undefined}
+              >
+                <item.icon size={18} />
+                {!collapsed ? <span>{item.label}</span> : null}
+              </Link>
+            );
+          })}
         </nav>
       </div>
 
