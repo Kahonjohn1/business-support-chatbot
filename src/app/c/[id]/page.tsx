@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { BusinessSupportChat } from "@/components/chat/BusinessSupportChat";
 import { AppShell } from "@/components/workspace/AppShell";
 import {
@@ -15,6 +16,7 @@ export default async function ConversationPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await connection();
   const { id } = await params;
   if (!isUuid(id)) notFound();
 
@@ -23,7 +25,7 @@ export default async function ConversationPage({
     getConversationDetail(context, id),
     getConversationList(context),
   ]);
-  if (!detail) notFound();
+  if (detail.status === "not-found") notFound();
 
   return (
     <AppShell

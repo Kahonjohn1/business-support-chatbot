@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { InlineScript } from "@/components/InlineScript";
 import "./globals.css";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 
@@ -17,7 +18,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground antialiased">
         {/* Applies the persisted theme before paint to avoid a theme flash. */}
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <InlineScript html={THEME_INIT_SCRIPT} />
         {children}
       </body>
     </html>

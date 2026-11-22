@@ -69,6 +69,35 @@ test("a saved conversation round-trips through storage", () => {
   assert.deepEqual(loadConversation(), messages);
 });
 
+test("storage preserves persistence identity, order, and approval metadata", () => {
+  installSessionStorage();
+  const pendingApproval = {
+    approvalId: "approval-1",
+    toolName: "create_project",
+    summary: "Create a project",
+    details: { name: "Website rebuild" },
+  };
+  const messages = [
+    message({
+      id: "m1",
+      clientMessageId: "client-1",
+      ordinal: 4,
+      role: "assistant",
+      content: "I can create that project.",
+      pendingApproval,
+      approvalStatus: "pending",
+    }),
+  ];
+
+  saveConversation(messages);
+  const restored = loadConversation();
+
+  assert.equal(restored?.[0].clientMessageId, "client-1");
+  assert.equal(restored?.[0].ordinal, 4);
+  assert.deepEqual(restored?.[0].pendingApproval, pendingApproval);
+  assert.equal(restored?.[0].approvalStatus, "pending");
+});
+
 test("restored attachments never claim saved file bytes or previews", () => {
   const { data } = installSessionStorage();
   const attachment = {

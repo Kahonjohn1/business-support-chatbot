@@ -18,7 +18,14 @@ export function appendChatMessage(
   messages: readonly ChatMessage[],
   message: ChatMessage
 ): ChatMessage[] {
-  return [...messages, message];
+  return [
+    ...messages,
+    {
+      ...message,
+      clientMessageId: message.clientMessageId || message.id,
+      ordinal: message.ordinal ?? messages.length,
+    },
+  ];
 }
 
 /** Returns a new array with the matching message updated (input is not mutated). */

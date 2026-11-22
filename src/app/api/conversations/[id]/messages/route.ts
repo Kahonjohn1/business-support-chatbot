@@ -1,10 +1,14 @@
 import { apiError, apiErrorFromException } from "@/lib/http/api";
-import { conversationTitleFromMessages, toMessageInserts } from "@/lib/conversationPersistence";
+import {
+  conversationTitleFromMessages,
+  resolveSavedMessageIdentities,
+  toMessageInserts,
+  validateMessageBatch,
+} from "@/lib/conversationPersistence";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { assertPersonalConversationAccess } from "@/lib/workspace/authorization";
 import { requireUserApi } from "@/lib/workspace/server";
 import { isUuid } from "@/lib/validation/uuid";
-import type { ChatMessage } from "@/types/chat";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -24,6 +28,10 @@ export async function POST(request: Request, context: RouteContext) {
       return apiError(400, "No messages were supplied.");
     }
 
+    const validation = validateMessageBatch(body.messages);
+    if (!validation.ok) return apiError(400, validation.error);
+    const messages = validation.messages;
+
     const supabase = await createSupabaseServerClient();
     const { data: conversation, error: conversationError } = await supabase
       .from("conversations")
@@ -36,31 +44,35 @@ export async function POST(request: Request, context: RouteContext) {
     if (!conversation) return apiError(404, "Conversation not found.");
     assertPersonalConversationAccess(conversation.user_id, workspace.user.id);
 
-    const inserts = toMessageInserts(
-      id,
-      workspace.user.id,
-      body.messages as ChatMessage[]
-    );
+    const inserts = toMessageInserts(id, workspace.user.id, messages);
     if (inserts.length === 0) return apiError(400, "No valid messages were supplied.");
 
-    const { error: insertError } = await supabase.from("messages").insert(
-      inserts.map(({ id, ...insert }) => {
-        void id;
-        return insert;
+    const { data: savedRows, error: insertError } = await supabase
+      .from("messages")
+      .upsert(inserts, {
+        onConflict: "conversation_id,client_message_id",
       })
-    );
+      .select("id, client_message_id");
 
     if (insertError) return apiError(400, "Unable to save messages.");
+    const confirmation = resolveSavedMessageIdentities(
+      inserts,
+      (savedRows ?? []).map((row) => {
+        const record = row as { id?: unknown; client_message_id?: unknown };
+        return { id: record.id, clientMessageId: record.client_message_id };
+      })
+    );
+    if (!confirmation.ok) return apiError(500, confirmation.error);
 
     const title =
-      conversation.title?.trim() || conversationTitleFromMessages(body.messages as ChatMessage[]);
+      conversation.title?.trim() || conversationTitleFromMessages(messages);
     await supabase
       .from("conversations")
       .update({ title })
       .eq("id", id)
       .eq("user_id", workspace.user.id);
 
-    return Response.json({ ok: true });
+    return Response.json({ ok: true, saved: confirmation.saved });
   } catch (error) {
     return apiErrorFromException(error);
   }

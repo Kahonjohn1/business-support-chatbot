@@ -19,10 +19,22 @@ import { MessageList } from "./MessageList";
 import { ChatComposer } from "./ChatComposer";
 import { ErrorBanner } from "./ErrorBanner";
 import { useSupportSummaryReporter } from "@/components/workspace/SupportSummaryContext";
+import { useNewChat } from "@/components/workspace/NewChatContext";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { createMessageId } from "@/lib/chatMessages";
+import {
+  dirtyMessages,
+  messageIdentity,
+  messagePersistenceSignature,
+  recordConfirmedPersistedMessages,
+  withOrdinals,
+} from "@/lib/messagePersistenceState";
 import { clearStoredConversation } from "@/lib/conversationStorage";
-import { conversationTitleFromMessages } from "@/lib/conversationPersistence";
+import {
+  conversationTitleFromMessages,
+  parseSavedMessageIdentities,
+  validateMessageBatch,
+} from "@/lib/conversationPersistence";
 import {
   formatApprovalOutcome,
   type ApprovalOutcome,
@@ -73,6 +85,7 @@ export const BusinessSupportChat: React.FC<BusinessSupportChatProps> = ({
   initialMessages,
 }) => {
   const router = useRouter();
+  const { requestId: newChatRequestId, requestNewChat } = useNewChat();
   const storageKey = conversationId ?? "new";
 
   // The conversation lives in React state, mirrored to a session-scoped copy
@@ -90,9 +103,32 @@ export const BusinessSupportChat: React.FC<BusinessSupportChatProps> = ({
     useStoredSession: !conversationId,
   });
 
-  const persistedCountRef = useRef<number>(initialMessages?.length ?? 0);
+  const persistedSignaturesRef = useRef<Map<string, string>>(
+    new Map(
+      withOrdinals(initialMessages ?? []).map((message) => [
+        messageIdentity(message),
+        messagePersistenceSignature(message),
+      ] as const)
+    )
+  );
   const persistenceBusyRef = useRef<boolean>(false);
+  const persistenceGenerationRef = useRef(0);
+  const createdConversationIdRef = useRef<string | null>(conversationId);
+  const messagesRef = useRef<readonly ChatMessage[]>(messages);
+  const conversationIdRef = useRef<string | null>(conversationId);
+  const storageKeyRef = useRef<string>(storageKey);
+  const userIdRef = useRef<string>(userId);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [persistenceRetryToken, setPersistenceRetryToken] = useState(0);
+  const blockedPersistenceIdsRef = useRef<Set<string>>(new Set());
+  const retryUnblockedRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+    conversationIdRef.current = conversationId;
+    storageKeyRef.current = storageKey;
+    userIdRef.current = userId;
+  }, [messages, conversationId, storageKey, userId]);
 
   const handleApprovalResolved = useCallback(
     (messageId: string, outcome: ApprovalOutcome) => {
@@ -153,6 +189,7 @@ export const BusinessSupportChat: React.FC<BusinessSupportChatProps> = ({
   // Cancel any pending request if the component unmounts
   useEffect(() => {
     return () => {
+      persistenceGenerationRef.current += 1;
       requestControllerRef.current?.abort();
       requestControllerRef.current = null;
     };
@@ -283,6 +320,8 @@ export const BusinessSupportChat: React.FC<BusinessSupportChatProps> = ({
   // Invalidate any in-flight request and clear the transient UI state.
   const resetTransientState = useCallback(() => {
     conversationSessionRef.current += 1;
+    persistenceGenerationRef.current += 1;
+    persistenceBusyRef.current = false;
     requestControllerRef.current?.abort();
     requestControllerRef.current = null;
     submissionLockRef.current = false;
@@ -292,33 +331,72 @@ export const BusinessSupportChat: React.FC<BusinessSupportChatProps> = ({
     setError(null);
   }, []);
 
-  useEffect(() => {
+  const drainPersistenceRef = useRef<() => void>(() => {});
+
+  const pendingPersistenceMessages = useCallback(
+    (
+      currentMessages: readonly ChatMessage[],
+      allowRetry = false
+    ): ChatMessage[] => {
+      const retryUnblocked = allowRetry && retryUnblockedRef.current;
+      if (retryUnblocked) retryUnblockedRef.current = false;
+      const seenIdentities = new Set<string>();
+      for (const message of currentMessages) {
+        const identity = messageIdentity(message);
+        const duplicate = seenIdentities.has(identity);
+        seenIdentities.add(identity);
+        if (!duplicate && validateMessageBatch([message]).ok) {
+          blockedPersistenceIdsRef.current.delete(identity);
+          continue;
+        }
+        if (!retryUnblocked) {
+          blockedPersistenceIdsRef.current.add(identity);
+        }
+      }
+      return dirtyMessages(
+        currentMessages,
+        persistedSignaturesRef.current
+      ).filter(
+        (message) =>
+          retryUnblocked ||
+          !blockedPersistenceIdsRef.current.has(messageIdentity(message))
+      );
+    },
+    []
+  );
+
+  const drainPersistence = useCallback(async () => {
     if (!isHydrated || persistenceBusyRef.current) return;
-
-    const pending = messages.slice(persistedCountRef.current);
-    if (pending.length === 0) return;
-    if (!conversationId && !pending.some((message) => message.role === "assistant")) {
-      return;
-    }
-
-    let cancelled = false;
     persistenceBusyRef.current = true;
+    const generation = persistenceGenerationRef.current;
+    const isCurrent = () => persistenceGenerationRef.current === generation;
+    let saveFailed = false;
 
-    void (async () => {
-      try {
-        let targetId = conversationId;
+    try {
+      while (true) {
+        if (!isCurrent()) return;
+        const currentMessages = withOrdinals(messagesRef.current);
+        const pending = pendingPersistenceMessages(currentMessages, true);
+        if (pending.length === 0) break;
 
+        let targetId =
+          createdConversationIdRef.current ?? conversationIdRef.current;
         if (!targetId) {
           const createResponse = await fetch("/api/conversations", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ title: conversationTitleFromMessages(messages) }),
+            body: JSON.stringify({
+              title: conversationTitleFromMessages(currentMessages),
+            }),
           });
+          if (!isCurrent()) return;
           if (!createResponse.ok) throw new Error("create failed");
           const created = (await createResponse.json()) as {
             conversation: { id: string };
           };
+          if (!isCurrent()) return;
           targetId = created.conversation.id;
+          createdConversationIdRef.current = targetId;
         }
 
         const saveResponse = await fetch(
@@ -329,29 +407,47 @@ export const BusinessSupportChat: React.FC<BusinessSupportChatProps> = ({
             body: JSON.stringify({ messages: pending }),
           }
         );
+        if (!isCurrent()) return;
         if (!saveResponse.ok) throw new Error("save failed");
-        if (cancelled) return;
-
-        persistedCountRef.current = messages.length;
+        const saveBody = (await saveResponse.json().catch(() => null)) as unknown;
+        if (!isCurrent()) return;
+        const confirmation = parseSavedMessageIdentities(
+          (saveBody as { saved?: unknown } | null)?.saved
+        );
+        if (!confirmation.ok) throw new Error("save confirmation failed");
+        recordConfirmedPersistedMessages(
+          persistedSignaturesRef.current,
+          pending,
+          confirmation.saved.map((identity) => identity.clientMessageId)
+        );
         setStorageError(null);
-        clearStoredConversation(storageKey, userId);
-        if (!conversationId) {
-          router.replace(`/c/${targetId}`);
-          router.refresh();
-        }
-      } catch {
-        if (!cancelled) {
-          setStorageError("This conversation could not be saved yet.");
-        }
-      } finally {
-        persistenceBusyRef.current = false;
       }
-    })();
+    } catch {
+      saveFailed = true;
+      if (!isCurrent()) return;
+      setStorageError("This conversation could not be saved yet.");
+    } finally {
+      if (isCurrent()) {
+        persistenceBusyRef.current = false;
+        if (
+          !saveFailed &&
+          pendingPersistenceMessages(
+            withOrdinals(messagesRef.current)
+          ).length > 0
+        ) {
+          queueMicrotask(() => drainPersistenceRef.current());
+        }
+      }
+    }
+  }, [isHydrated, pendingPersistenceMessages]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [conversationId, isHydrated, messages, router, storageKey, userId]);
+  useEffect(() => {
+    drainPersistenceRef.current = () => void drainPersistence();
+  }, [drainPersistence]);
+
+  useEffect(() => {
+    queueMicrotask(() => void drainPersistence());
+  }, [drainPersistence, messages, persistenceRetryToken]);
 
   // Release the object URLs of any pending composer attachments and reset them.
   // Only these pending files are dropped from the shared cache; files belonging
@@ -528,21 +624,40 @@ export const BusinessSupportChat: React.FC<BusinessSupportChatProps> = ({
   };
 
   const handleNewConversation = () => {
-    // Discards the conversation along with its session-scoped copy.
     resetTransientState();
     clearComposerAttachments();
     clearConversation();
+    clearStoredConversation("new", userId);
     setInput("");
     setStorageError(null);
-    router.push("/c/new");
+    persistedSignaturesRef.current = new Map();
+    createdConversationIdRef.current = null;
+    blockedPersistenceIdsRef.current.clear();
+    retryUnblockedRef.current = false;
+    if (conversationIdRef.current) {
+      router.push("/c/new");
+    }
   };
+
+  const lastNewChatRequestIdRef = useRef(newChatRequestId);
+  const newChatHandlerRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    newChatHandlerRef.current = handleNewConversation;
+  });
+
+  useEffect(() => {
+    if (newChatRequestId === lastNewChatRequestIdRef.current) return;
+    lastNewChatRequestIdRef.current = newChatRequestId;
+    newChatHandlerRef.current();
+  }, [newChatRequestId]);
 
   return (
     <section
       aria-label="Marque Technologies Support chat"
       className="relative flex flex-col w-full max-w-6xl h-[680px] sm:h-[740px] md:h-[800px] max-h-[90vh] bg-surface border border-border rounded-2xl overflow-hidden shadow-xs"
     >
-      <ChatHeader onNewConversation={handleNewConversation} />
+      <ChatHeader onNewConversation={requestNewChat} />
 
       <ErrorBanner
         message={error}
@@ -551,9 +666,20 @@ export const BusinessSupportChat: React.FC<BusinessSupportChatProps> = ({
       />
 
       {storageError ? (
-        <p className="shrink-0 bg-danger-subtle px-4 py-2 text-sm text-danger">
-          {storageError}
-        </p>
+        <div className="shrink-0 bg-danger-subtle px-4 py-2 text-sm text-danger flex items-center justify-between gap-3">
+          <span>{storageError}</span>
+          <button
+            className="rounded px-2 py-1 text-xs font-medium underline"
+            onClick={() => {
+              blockedPersistenceIdsRef.current.clear();
+              retryUnblockedRef.current = true;
+              setPersistenceRetryToken((current) => current + 1);
+            }}
+            type="button"
+          >
+            Retry
+          </button>
+        </div>
       ) : null}
 
       <main className="flex-1 flex flex-col min-h-0 relative bg-background">

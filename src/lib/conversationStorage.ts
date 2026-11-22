@@ -134,6 +134,17 @@ function parseMessage(value: unknown): ChatMessage | null {
     createdAt: candidate.createdAt,
   };
 
+  if (typeof candidate.clientMessageId === "string" && candidate.clientMessageId) {
+    message.clientMessageId = candidate.clientMessageId;
+  }
+  if (
+    typeof candidate.ordinal === "number" &&
+    Number.isInteger(candidate.ordinal) &&
+    candidate.ordinal >= 0
+  ) {
+    message.ordinal = candidate.ordinal;
+  }
+
   if (candidate.attachments !== undefined) {
     if (!Array.isArray(candidate.attachments)) return null;
     const attachments: Attachment[] = [];
@@ -173,6 +184,12 @@ function serializeMessage(message: ChatMessage): Record<string, unknown> {
     content: message.content,
     createdAt: message.createdAt,
   };
+  if (message.clientMessageId) {
+    stored.clientMessageId = message.clientMessageId;
+  }
+  if (message.ordinal !== undefined) {
+    stored.ordinal = message.ordinal;
+  }
   if (message.attachments && message.attachments.length > 0) {
     stored.attachments = message.attachments.map((attachment) => ({
       id: attachment.id,

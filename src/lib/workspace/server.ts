@@ -2,6 +2,7 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import {
   toChatMessages,
   toConversationListItem,
@@ -155,10 +156,18 @@ export async function getConversationList(
   );
 }
 
+type ConversationDetailResult =
+  | {
+      status: "ok";
+      conversation: ConversationListItem;
+      messages: ReturnType<typeof toChatMessages>;
+    }
+  | { status: "not-found" };
+
 export async function getConversationDetail(
   context: WorkspaceContext,
   conversationId: string
-): Promise<{ conversation: ConversationListItem; messages: ReturnType<typeof toChatMessages> } | null> {
+): Promise<ConversationDetailResult> {
   const supabase = await createSupabaseServerClient();
   const { data: conversationRow, error: conversationError } = await supabase
     .from("conversations")
@@ -167,25 +176,32 @@ export async function getConversationDetail(
     .eq("user_id", context.user.id)
     .maybeSingle();
 
+  if (conversationError) {
+    throw new Error("Unable to load conversation.");
+  }
   if (
-    conversationError ||
     !conversationRow ||
     !canAccessPersonalConversation(conversationRow.user_id, context.user.id)
   ) {
-    return null;
+    return { status: "not-found" };
   }
 
   const { data: messageRows, error: messagesError } = await supabase
     .from("messages")
     .select(
-      "id, role, content, created_at, attachments, sources, insufficient_evidence, pending_approval, approval_status"
+      "id, role, content, created_at, attachments, sources, insufficient_evidence, pending_approval, approval_status, client_message_id, ordinal, approval_metadata"
     )
     .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true });
+    .order("ordinal", { ascending: true })
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
-  if (messagesError) return null;
+  if (messagesError) {
+    throw new Error("Unable to load messages.");
+  }
 
   return {
+    status: "ok",
     conversation: toConversationListItem(conversationRow as ConversationRecord),
     messages: toChatMessages((messageRows ?? []) as MessageRecord[]),
   };
@@ -219,6 +235,8 @@ export async function requireApiWorkspace(): Promise<WorkspaceContext> {
 }
 
 export async function requireUserPage(nextPath?: string): Promise<WorkspaceContext> {
+  await connection();
+
   const context = await getWorkspaceContext();
   if (!context) {
     redirect(nextPath ? `/login?next=${encodeURIComponent(nextPath)}` : "/login");

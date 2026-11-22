@@ -36,10 +36,12 @@ export async function GET(_request: Request, context: RouteContext) {
     const { data: messageRows, error: messagesError } = await supabase
       .from("messages")
       .select(
-        "id, role, content, created_at, attachments, sources, insufficient_evidence, pending_approval, approval_status"
+        "id, role, content, created_at, attachments, sources, insufficient_evidence, pending_approval, approval_status, client_message_id, ordinal, approval_metadata"
       )
       .eq("conversation_id", id)
-      .order("created_at", { ascending: true });
+      .order("ordinal", { ascending: true })
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
 
     if (messagesError) return apiError(500, "Unable to load messages.");
 

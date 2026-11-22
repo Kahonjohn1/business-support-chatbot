@@ -34,6 +34,7 @@ import { MarqueLogo } from "@/components/brand/MarqueLogo";
 import { HumanSupport } from "@/components/chat/HumanSupport";
 import { ThemeToggle } from "@/components/chat/ThemeToggle";
 import { SupportSummaryProvider } from "@/components/workspace/SupportSummaryContext";
+import { NewChatProvider, useNewChat } from "@/components/workspace/NewChatContext";
 import type {
   ConversationListItem,
 } from "@/lib/conversationPersistence";
@@ -74,13 +75,22 @@ function getCollapsedServerSnapshot(): boolean {
   return false;
 }
 
-export function AppShell({
+export function AppShell(props: AppShellProps) {
+  return (
+    <NewChatProvider>
+      <AppShellContent {...props} />
+    </NewChatProvider>
+  );
+}
+
+function AppShellContent({
   context,
   conversations,
   currentConversationId,
   children,
 }: AppShellProps) {
   const router = useRouter();
+  const { requestNewChat } = useNewChat();
   const pathname = usePathname();
   const searchRef = useRef<HTMLInputElement>(null);
   const collapsed = useSyncExternalStore(
@@ -303,15 +313,20 @@ export function AppShell({
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-3">
-        <Link
-          className="mb-3 flex items-center gap-3 rounded-lg bg-primary px-3 py-2.5 font-medium text-primary-foreground hover:bg-primary-hover"
-          href="/c/new"
-          onClick={closeMobile}
+        <button
+          className="mb-3 flex w-full items-center gap-3 rounded-lg bg-primary px-3 py-2.5 font-medium text-primary-foreground hover:bg-primary-hover"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            closeMobile();
+            requestNewChat();
+          }}
           title="New Chat"
+          type="button"
         >
           <Plus size={18} />
           {!collapsed ? <span>New Chat</span> : null}
-        </Link>
+        </button>
 
         {searchOpen && !collapsed ? (
           <input

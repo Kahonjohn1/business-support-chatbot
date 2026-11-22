@@ -62,6 +62,8 @@ export interface ChatMessage {
   role: MessageRole;
   content: string;
   createdAt: string;
+  clientMessageId?: string;
+  ordinal?: number;
   attachments?: Attachment[];
   /** Approved documents consulted for this reply, when any were used. */
   sources?: ChatSource[];
