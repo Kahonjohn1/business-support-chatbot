@@ -48,6 +48,21 @@ export interface CreatePersonalTaskInput {
   readonly assignee?: string;
 }
 
+export interface UpdatePersonalProjectInput {
+  readonly name?: string;
+  readonly status?: PersonalProjectStatus;
+  readonly progressNotes?: string;
+  readonly blockers?: readonly string[];
+}
+
+export interface UpdatePersonalTaskInput {
+  readonly title?: string;
+  readonly description?: string;
+  readonly priority?: PersonalTaskPriority;
+  readonly status?: PersonalTaskStatus;
+  readonly assignee?: string;
+}
+
 export interface PersonalProjectRepository {
   listProjects(
     userId: string,
@@ -73,6 +88,16 @@ export interface PersonalProjectRepository {
     userId: string,
     input: CreatePersonalTaskInput
   ): Promise<PersonalTaskRecord>;
+  updateProject(
+    userId: string,
+    projectId: string,
+    input: UpdatePersonalProjectInput
+  ): Promise<PersonalProjectRecord | null>;
+  updateTask(
+    userId: string,
+    taskId: string,
+    input: UpdatePersonalTaskInput
+  ): Promise<PersonalTaskRecord | null>;
 }
 
 export class PersonalDataError extends Error {
@@ -309,6 +334,67 @@ const supabasePersonalProjectRepository: PersonalProjectRepository = {
     if (error) throwDatabaseError("task creation", error.message);
     return mapTask(data);
   },
+
+  async updateProject(userId, projectId, input) {
+    const owner = requireOwnership(userId);
+    const patch: Record<string, unknown> = {};
+    if (input.name !== undefined) patch.name = input.name;
+    if (input.status !== undefined) patch.status = input.status;
+    if (input.progressNotes !== undefined) patch.progress_notes = input.progressNotes;
+    if (input.blockers !== undefined) patch.blockers = [...input.blockers];
+    if (Object.keys(patch).length === 0) {
+      return this.getProjectById(owner, projectId);
+    }
+
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("projects")
+      .update(patch)
+      .eq("user_id", owner)
+      .eq("id", projectId)
+      .select(
+        "id, user_id, name, status, progress_notes, blockers, created_at, updated_at"
+      )
+      .maybeSingle();
+    if (error) throwDatabaseError("project update", error.message);
+    return data ? mapProject(data) : null;
+  },
+
+  async updateTask(userId, taskId, input) {
+    const owner = requireOwnership(userId);
+    const patch: Record<string, unknown> = {};
+    if (input.title !== undefined) patch.title = input.title;
+    if (input.description !== undefined) patch.description = input.description;
+    if (input.priority !== undefined) patch.priority = input.priority;
+    if (input.status !== undefined) patch.status = input.status;
+    if (input.assignee !== undefined) patch.assignee_label = input.assignee;
+    if (Object.keys(patch).length === 0) {
+      const supabase = await createClient();
+      const { data, error } = await supabase
+        .from("tasks")
+        .select(
+          "id, user_id, project_id, title, description, priority, status, assignee_label, created_at"
+        )
+        .eq("user_id", owner)
+        .eq("id", taskId)
+        .maybeSingle();
+      if (error) throwDatabaseError("task retrieval", error.message);
+      return data ? mapTask(data) : null;
+    }
+
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("tasks")
+      .update(patch)
+      .eq("user_id", owner)
+      .eq("id", taskId)
+      .select(
+        "id, user_id, project_id, title, description, priority, status, assignee_label, created_at"
+      )
+      .maybeSingle();
+    if (error) throwDatabaseError("task update", error.message);
+    return data ? mapTask(data) : null;
+  },
 };
 
 let activeRepository: PersonalProjectRepository =
@@ -372,4 +458,24 @@ export async function createPersonalTask(
   input: CreatePersonalTaskInput
 ): Promise<PersonalTaskRecord> {
   return activeRepository.createTask(personalUserIdFromAuth(auth), input);
+}
+
+export async function updatePersonalProject(
+  auth: unknown,
+  projectId: string,
+  input: UpdatePersonalProjectInput
+): Promise<PersonalProjectRecord | null> {
+  return activeRepository.updateProject(
+    personalUserIdFromAuth(auth),
+    projectId,
+    input
+  );
+}
+
+export async function updatePersonalTask(
+  auth: unknown,
+  taskId: string,
+  input: UpdatePersonalTaskInput
+): Promise<PersonalTaskRecord | null> {
+  return activeRepository.updateTask(personalUserIdFromAuth(auth), taskId, input);
 }

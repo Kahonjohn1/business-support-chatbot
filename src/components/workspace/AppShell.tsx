@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Folder,
   Headphones,
+  Link2,
   ListChecks,
   LogOut,
   Menu,
@@ -17,7 +18,9 @@ import {
   Settings,
   Trash2,
   UserRound,
+  Users,
   X,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -35,15 +38,26 @@ import { HumanSupport } from "@/components/chat/HumanSupport";
 import { ThemeToggle } from "@/components/chat/ThemeToggle";
 import { SupportSummaryProvider } from "@/components/workspace/SupportSummaryContext";
 import { NewChatProvider, useNewChat } from "@/components/workspace/NewChatContext";
+import {
+  WorkspaceSwitcher,
+  type WorkspaceSwitcherOption,
+} from "@/components/workspace/WorkspaceSwitcher";
 import type {
   ConversationListItem,
 } from "@/lib/conversationPersistence";
 import type { WorkspaceContext } from "@/lib/workspace/types";
 
+interface AppShellWorkspaceView {
+  readonly active: WorkspaceSwitcherOption;
+  readonly options: readonly WorkspaceSwitcherOption[];
+  readonly notice?: string;
+}
+
 interface AppShellProps {
   context: WorkspaceContext;
   conversations: readonly ConversationListItem[];
   currentConversationId: string | null;
+  workspace?: AppShellWorkspaceView;
   children: ReactNode;
 }
 
@@ -57,6 +71,9 @@ interface SidebarItem {
 const WORKSPACE_ITEMS: readonly SidebarItem[] = [
   { label: "Projects", icon: Folder, href: "/projects" },
   { label: "Tasks", icon: ListChecks, href: "/tasks" },
+  { label: "Team", icon: Users, href: "/team" },
+  { label: "Integrations", icon: Link2, href: "/integrations" },
+  { label: "Automations", icon: Zap, href: "/automations" },
 ];
 
 const COLLAPSED_KEY = "marque-support:sidebar-collapsed";
@@ -87,6 +104,7 @@ function AppShellContent({
   context,
   conversations,
   currentConversationId,
+  workspace,
   children,
 }: AppShellProps) {
   const router = useRouter();
@@ -119,6 +137,10 @@ function AppShellContent({
       .filter((item) => conversationOverrides[item.id] !== null)
       .map((item) => conversationOverrides[item.id] ?? item);
   }, [conversations, conversationOverrides, searchedConversations]);
+  const workspaceView: AppShellWorkspaceView = workspace ?? {
+    active: { id: "personal", name: "Personal", kind: "personal" },
+    options: [{ id: "personal", name: "Personal", kind: "personal" }],
+  };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -604,6 +626,11 @@ function AppShellContent({
           >
             <Menu size={20} />
           </button>
+          <WorkspaceSwitcher
+            active={workspaceView.active}
+            notice={workspaceView.notice}
+            options={workspaceView.options}
+          />
           <div className="min-w-0 flex-1" />
           <ThemeToggle />
         </header>
