@@ -22,11 +22,11 @@ import {
   verifiedWorkspaceIdFromAuth,
 } from "@/lib/workspace/workspaceProjectData";
 import {
-  beginApprovalExecution,
-  createApprovalRequest,
-  getApprovalRequest,
-  markApprovalExecuted,
-  markApprovalFailed,
+  beginApprovalExecutionRecord,
+  completeApprovalExecutionRecord,
+  createApprovalRecord,
+  failApprovalExecutionRecord,
+  getApprovalRecord,
 } from "@/lib/approvalWorkflow";
 import { dispatchProjectMutation } from "@/lib/automation/dispatch";
 
@@ -676,7 +676,7 @@ async function executeApprovedCreateProject(
   }
   const workspaceKind = workspaceId ? "shared" : "personal";
 
-  const approval = getApprovalRequest(approvalId);
+  const approval = await getApprovalRecord(approvalId);
   if (!approval) {
     return invalidArguments("The approval request was not found or has expired.");
   }
@@ -720,7 +720,7 @@ async function executeApprovedCreateProject(
   }
 
   try {
-    beginApprovalExecution(approval.id);
+    await beginApprovalExecutionRecord(approval.id);
   } catch {
     return executionFailed("The approval could not be executed.");
   }
@@ -734,7 +734,7 @@ async function executeApprovedCreateProject(
       ...(params.blockers ? { blockers: params.blockers } : {}),
     });
   } catch (error) {
-    markApprovalFailed(
+    await failApprovalExecutionRecord(
       approval.id,
       error instanceof Error ? error.message : "Project creation failed."
     );
@@ -744,9 +744,9 @@ async function executeApprovedCreateProject(
 
   const data = executedProjectData(project);
   try {
-    markApprovalExecuted(approval.id, data);
+    await completeApprovalExecutionRecord(approval.id, data);
   } catch {
-    const current = getApprovalRequest(approval.id);
+    const current = await getApprovalRecord(approval.id);
     if (current?.status !== "executed" || !isRecord(current.executionResult)) {
       return executionFailed("The approved project could not be confirmed.");
     }
@@ -782,7 +782,7 @@ export async function executeCreateProject(
 
   const approvalId = context.approvalId?.trim();
   if (approvalId) {
-    const approval = getApprovalRequest(approvalId);
+    const approval = await getApprovalRecord(approvalId);
     if (!approval || approval.toolName !== CREATE_PROJECT_TOOL_NAME) {
       return invalidArguments("The approval request was not found or has expired.");
     }
@@ -832,7 +832,7 @@ export async function executeCreateProject(
     blockers: params.blockers ?? [],
   };
   try {
-    const approval = createApprovalRequest({
+    const approval = await createApprovalRecord({
       requestId: context.requestId,
       toolName: CREATE_PROJECT_TOOL_NAME,
       rawArguments,
@@ -956,7 +956,7 @@ async function executeApprovedUpdateProject(
   workspaceId: string | undefined,
   workspaceKind: "personal" | "shared"
 ): Promise<StructuredToolOutput> {
-  const approval = getApprovalRequest(approvalId);
+  const approval = await getApprovalRecord(approvalId);
   if (!approval) {
     return invalidArguments("The approval request was not found or has expired.");
   }
@@ -1001,7 +1001,7 @@ async function executeApprovedUpdateProject(
   }
 
   try {
-    beginApprovalExecution(approval.id);
+    await beginApprovalExecutionRecord(approval.id);
   } catch {
     return executionFailed("The approval could not be executed.");
   }
@@ -1018,7 +1018,7 @@ async function executeApprovedUpdateProject(
     if (!updated) throw new Error("Project not found.");
     projectRecord = updated;
   } catch (error) {
-    markApprovalFailed(
+    await failApprovalExecutionRecord(
       approval.id,
       error instanceof Error ? error.message : "Project update failed."
     );
@@ -1028,9 +1028,9 @@ async function executeApprovedUpdateProject(
 
   const data = { status: "executed" as const, project: toProjectDetails(projectRecord) };
   try {
-    markApprovalExecuted(approval.id, data);
+    await completeApprovalExecutionRecord(approval.id, data);
   } catch {
-    const current = getApprovalRequest(approval.id);
+    const current = await getApprovalRecord(approval.id);
     if (current?.status !== "executed" || !isRecord(current.executionResult)) {
       return executionFailed("The approved project update could not be confirmed.");
     }
@@ -1065,7 +1065,7 @@ export async function executeUpdateProject(
   const approvalId = context.approvalId?.trim();
 
   if (approvalId) {
-    const approval = getApprovalRequest(approvalId);
+    const approval = await getApprovalRecord(approvalId);
     if (!approval || approval.toolName !== UPDATE_PROJECT_TOOL_NAME) {
       return invalidArguments("The approval request was not found or has expired.");
     }
@@ -1114,7 +1114,7 @@ export async function executeUpdateProject(
     blockers: params.blockers ?? [],
   };
   try {
-    const approval = createApprovalRequest({
+    const approval = await createApprovalRecord({
       requestId: context.requestId,
       toolName: UPDATE_PROJECT_TOOL_NAME,
       rawArguments,

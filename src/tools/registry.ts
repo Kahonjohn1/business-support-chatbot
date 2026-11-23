@@ -83,7 +83,7 @@ import {
   hasPermissionPolicy,
   type AuthorizationContext,
 } from "@/lib/permissions";
-import { recordAuditEvent } from "@/lib/auditLog";
+import { persistAuditEvent } from "@/lib/auditLog";
 
 export type {
   ToolExecutionContext,
@@ -92,6 +92,14 @@ export type {
   ToolExecutionFailure,
   ToolExecutionResult,
 };
+
+function auditContextForExecution(ctx: ToolExecutionContext) {
+  const auth = ctx.auth as AuthorizationContext | undefined;
+  if (auth?.workspaceKind === "shared" && auth.workspaceId) {
+    return { workspaceKind: "shared" as const, workspaceId: auth.workspaceId };
+  }
+  return { workspaceKind: "personal" as const };
+}
 
 export interface ToolMetadata {
   /**
@@ -362,17 +370,20 @@ export class ToolRegistry {
 
     if (!tool) {
       const durationMs = Date.now() - t0;
-      recordAuditEvent({
-        requestId: ctx.requestId,
-        toolName: name,
-        operation: "tool_dispatch",
-        status: "denied",
-        executionOutcome: {
-          ok: false,
-          code: "UNKNOWN_TOOL",
-          durationMs,
+      await persistAuditEvent(
+        {
+          requestId: ctx.requestId,
+          toolName: name,
+          operation: "tool_dispatch",
+          status: "denied",
+          executionOutcome: {
+            ok: false,
+            code: "UNKNOWN_TOOL",
+            durationMs,
+          },
         },
-      });
+        auditContextForExecution(ctx)
+      );
 
       return {
         ok: false,
@@ -392,16 +403,19 @@ export class ToolRegistry {
       const authContext = ctx.auth as AuthorizationContext | undefined;
       if (typeof authContext?.userId !== "string" || !authContext.userId.trim()) {
         const durationMs = Date.now() - t0;
-        recordAuditEvent({
-          requestId: ctx.requestId,
-          toolName: name,
-          operation: "permission_check",
-          status: "denied",
-          permissionDecision: {
-            permitted: false,
-            reason: "Verified user identity is required.",
+        await persistAuditEvent(
+          {
+            requestId: ctx.requestId,
+            toolName: name,
+            operation: "permission_check",
+            status: "denied",
+            permissionDecision: {
+              permitted: false,
+              reason: "Verified user identity is required.",
+            },
           },
-        });
+          auditContextForExecution(ctx)
+        );
 
         return {
           ok: false,
@@ -419,18 +433,21 @@ export class ToolRegistry {
       const permResult = checkPermission(name, authContext);
       if (!permResult.permitted) {
         const durationMs = Date.now() - t0;
-        recordAuditEvent({
-          requestId: ctx.requestId,
-          toolName: name,
-          operation: "permission_check",
-          status: "denied",
-          permissionDecision: {
-            permitted: false,
-            role: authContext?.role,
-            requiredPermission: permResult.requiredPermission,
-            reason: permResult.reason,
+        await persistAuditEvent(
+          {
+            requestId: ctx.requestId,
+            toolName: name,
+            operation: "permission_check",
+            status: "denied",
+            permissionDecision: {
+              permitted: false,
+              role: authContext?.role,
+              requiredPermission: permResult.requiredPermission,
+              reason: permResult.reason,
+            },
           },
-        });
+          auditContextForExecution(ctx)
+        );
 
         return {
           ok: false,
@@ -445,17 +462,20 @@ export class ToolRegistry {
         };
       }
 
-      recordAuditEvent({
-        requestId: ctx.requestId,
-        toolName: name,
-        operation: "permission_check",
-        status: "permitted",
-        permissionDecision: {
-          permitted: true,
-          role: authContext?.role,
-          requiredPermission: permResult.requiredPermission,
+      await persistAuditEvent(
+        {
+          requestId: ctx.requestId,
+          toolName: name,
+          operation: "permission_check",
+          status: "permitted",
+          permissionDecision: {
+            permitted: true,
+            role: authContext?.role,
+            requiredPermission: permResult.requiredPermission,
+          },
         },
-      });
+        auditContextForExecution(ctx)
+      );
     }
 
     let rawHandlerResult: unknown;
@@ -468,17 +488,20 @@ export class ToolRegistry {
           ? error.message
           : "The tool could not be executed.";
 
-      recordAuditEvent({
-        requestId: ctx.requestId,
-        toolName: name,
-        operation: "tool_execution",
-        status: "failed",
-        executionOutcome: {
-          ok: false,
-          code: "EXECUTION_FAILED",
-          durationMs,
+      await persistAuditEvent(
+        {
+          requestId: ctx.requestId,
+          toolName: name,
+          operation: "tool_execution",
+          status: "failed",
+          executionOutcome: {
+            ok: false,
+            code: "EXECUTION_FAILED",
+            durationMs,
+          },
         },
-      });
+        auditContextForExecution(ctx)
+      );
 
       return {
         ok: false,
@@ -498,17 +521,20 @@ export class ToolRegistry {
       validated = validateToolHandlerResult(rawHandlerResult);
     } catch {
       const durationMs = Date.now() - t0;
-      recordAuditEvent({
-        requestId: ctx.requestId,
-        toolName: name,
-        operation: "tool_execution",
-        status: "failed",
-        executionOutcome: {
-          ok: false,
-          code: "INVALID_RESULT",
-          durationMs,
+      await persistAuditEvent(
+        {
+          requestId: ctx.requestId,
+          toolName: name,
+          operation: "tool_execution",
+          status: "failed",
+          executionOutcome: {
+            ok: false,
+            code: "INVALID_RESULT",
+            durationMs,
+          },
         },
-      });
+        auditContextForExecution(ctx)
+      );
 
       return {
         ok: false,
@@ -524,17 +550,20 @@ export class ToolRegistry {
     }
 
     const durationMs = Date.now() - t0;
-    recordAuditEvent({
-      requestId: ctx.requestId,
-      toolName: name,
-      operation: "tool_execution",
-      status: validated.ok ? "executed" : "failed",
-      executionOutcome: {
-        ok: validated.ok,
-        code: validated.ok ? undefined : validated.error.code,
-        durationMs,
+    await persistAuditEvent(
+      {
+        requestId: ctx.requestId,
+        toolName: name,
+        operation: "tool_execution",
+        status: validated.ok ? "executed" : "failed",
+        executionOutcome: {
+          ok: validated.ok,
+          code: validated.ok ? undefined : validated.error.code,
+          durationMs,
+        },
       },
-    });
+      auditContextForExecution(ctx)
+    );
 
     if (validated.ok) {
       return {

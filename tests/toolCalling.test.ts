@@ -1,6 +1,8 @@
-import { test } from "node:test";
+import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 
+import { selectMemoryApprovalRecordStore } from "../src/lib/approvalWorkflow.ts";
+import { selectMemoryAuditStore } from "../src/lib/auditLog.ts";
 import {
   MAX_TOOL_CALLS,
   ToolLoopError,
@@ -44,6 +46,11 @@ function toolMessage(message: ToolMessage): TestMessage {
     name: message.name,
   };
 }
+
+beforeEach(() => {
+  selectMemoryApprovalRecordStore();
+  selectMemoryAuditStore();
+});
 
 test("a registered tool call executes and the loop returns the final answer", async () => {
   const requests: ToolModelRequest<TestMessage>[] = [];

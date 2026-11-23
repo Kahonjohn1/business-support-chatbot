@@ -1,8 +1,8 @@
 import {
-  createApprovalRequest,
-  getApprovalRequest,
-  beginApprovalExecution,
-  markApprovalExecuted,
+  beginApprovalExecutionRecord,
+  completeApprovalExecutionRecord,
+  createApprovalRecord,
+  getApprovalRecord,
 } from "@/lib/approvalWorkflow";
 import {
   findIntegrationConnection,
@@ -282,7 +282,7 @@ async function auditToolAction(
 }
 
 function assertApprovalBinding(
-  approval: ReturnType<typeof getApprovalRequest>,
+  approval: Awaited<ReturnType<typeof getApprovalRecord>>,
   input: {
     toolName: string;
     context: ToolExecutionContext;
@@ -437,7 +437,7 @@ async function executePrepareTool(
     }
 
     if (context.approvalId) {
-      const approval = getApprovalRequest(context.approvalId);
+      const approval = await getApprovalRecord(context.approvalId);
       if (!approval) {
         return failure("PERMISSION_DENIED", "The approval request was not found.");
       }
@@ -462,7 +462,7 @@ async function executePrepareTool(
         return failure("PERMISSION_DENIED", "The approval does not match this operation.");
       }
 
-      beginApprovalExecution(context.approvalId);
+      await beginApprovalExecutionRecord(context.approvalId);
       const data = {
         status: "executed" as const,
         kind: options.toolName,
@@ -470,12 +470,12 @@ async function executePrepareTool(
         payload: options.buildPayload(args),
         notice: "Prepared for review. No message was sent and no event was created.",
       };
-      markApprovalExecuted(context.approvalId, data);
+      await completeApprovalExecutionRecord(context.approvalId, data);
       await auditToolAction(integrationContext, options.provider, options.toolName, "success");
       return success(data);
     }
 
-    const approval = createApprovalRequest({
+    const approval = await createApprovalRecord({
       requestId: context.requestId,
       toolName: options.toolName,
       rawArguments,

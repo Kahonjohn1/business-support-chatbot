@@ -1,6 +1,8 @@
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 
+import { selectMemoryApprovalRecordStore } from "../src/lib/approvalWorkflow.ts";
+import { selectMemoryAuditStore } from "../src/lib/auditLog.ts";
 import { GET_PROJECT_STATUS_TOOL_NAME } from "../src/tools/projectStatusTool.ts";
 import {
   REGISTERED_TOOLS,
@@ -39,6 +41,8 @@ function execute(
 }
 
 beforeEach(() => {
+  selectMemoryApprovalRecordStore();
+  selectMemoryAuditStore();
   resetPersonalRepository();
   const repository = installPersonalRepository(new FakePersonalRepository());
   seedProject(repository, "user_test", "Website Redesign", "active");

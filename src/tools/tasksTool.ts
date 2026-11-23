@@ -23,11 +23,11 @@ import {
   type ProjectReference,
 } from "@/tools/projectStatusTool";
 import {
-  beginApprovalExecution,
-  createApprovalRequest,
-  getApprovalRequest,
-  markApprovalExecuted,
-  markApprovalFailed,
+  beginApprovalExecutionRecord,
+  completeApprovalExecutionRecord,
+  createApprovalRecord,
+  failApprovalExecutionRecord,
+  getApprovalRecord,
 } from "@/lib/approvalWorkflow";
 import { dispatchTaskMutation } from "@/lib/automation/dispatch";
 
@@ -721,7 +721,7 @@ async function executeApprovedCreateTask(
   }
   const workspaceKind = workspaceId ? "shared" : "personal";
 
-  const approval = getApprovalRequest(approvalId);
+  const approval = await getApprovalRecord(approvalId);
   if (!approval) {
     return invalidArguments("The approval request was not found or has expired.");
   }
@@ -774,7 +774,7 @@ async function executeApprovedCreateTask(
   }
 
   try {
-    beginApprovalExecution(approval.id);
+    await beginApprovalExecutionRecord(approval.id);
   } catch {
     return executionFailed("The approval could not be executed.");
   }
@@ -790,7 +790,7 @@ async function executeApprovedCreateTask(
       assigneeId: params.assigneeId,
     });
   } catch (error) {
-    markApprovalFailed(
+    await failApprovalExecutionRecord(
       approval.id,
       error instanceof Error ? error.message : "Task creation failed."
     );
@@ -800,9 +800,9 @@ async function executeApprovedCreateTask(
 
   const data = executedTaskData(task, project);
   try {
-    markApprovalExecuted(approval.id, data);
+    await completeApprovalExecutionRecord(approval.id, data);
   } catch {
-    const current = getApprovalRequest(approval.id);
+    const current = await getApprovalRecord(approval.id);
     if (current?.status !== "executed" || !isRecord(current.executionResult)) {
       return executionFailed("The approved task could not be confirmed.");
     }
@@ -838,7 +838,7 @@ export async function executeCreateProjectTask(
 
   const approvalId = context.approvalId?.trim();
   if (approvalId) {
-    const approval = getApprovalRequest(approvalId);
+    const approval = await getApprovalRecord(approvalId);
     if (!approval || approval.toolName !== CREATE_PROJECT_TASK_TOOL_NAME) {
       return invalidArguments("The approval request was not found or has expired.");
     }
@@ -883,7 +883,7 @@ export async function executeCreateProjectTask(
 
   const summary = `Create ${params.priority} priority task "${params.title}" in project "${project.name}"`;
   try {
-    const approval = createApprovalRequest({
+    const approval = await createApprovalRecord({
       requestId: context.requestId,
       toolName: CREATE_PROJECT_TASK_TOOL_NAME,
       rawArguments,
@@ -1062,7 +1062,7 @@ async function executeApprovedUpdateTask(
   workspaceId: string | undefined,
   workspaceKind: "personal" | "shared"
 ): Promise<StructuredToolOutput> {
-  const approval = getApprovalRequest(approvalId);
+  const approval = await getApprovalRecord(approvalId);
   if (!approval) {
     return invalidArguments("The approval request was not found or has expired.");
   }
@@ -1105,7 +1105,7 @@ async function executeApprovedUpdateTask(
     );
   }
   try {
-    beginApprovalExecution(approval.id);
+    await beginApprovalExecutionRecord(approval.id);
   } catch {
     return executionFailed("The approval could not be executed.");
   }
@@ -1127,7 +1127,7 @@ async function executeApprovedUpdateTask(
     if (!updated) throw new Error("Task not found.");
     updatedTask = updated;
   } catch (error) {
-    markApprovalFailed(
+    await failApprovalExecutionRecord(
       approval.id,
       error instanceof Error ? error.message : "Task update failed."
     );
@@ -1141,9 +1141,9 @@ async function executeApprovedUpdateTask(
     task: taskDetails(updatedTask),
   };
   try {
-    markApprovalExecuted(approval.id, data);
+    await completeApprovalExecutionRecord(approval.id, data);
   } catch {
-    const current = getApprovalRequest(approval.id);
+    const current = await getApprovalRecord(approval.id);
     if (current?.status !== "executed" || !isRecord(current.executionResult)) {
       return executionFailed("The approved task update could not be confirmed.");
     }
@@ -1178,7 +1178,7 @@ export async function executeUpdateProjectTask(
   const approvalId = context.approvalId?.trim();
 
   if (approvalId) {
-    const approval = getApprovalRequest(approvalId);
+    const approval = await getApprovalRecord(approvalId);
     if (!approval || approval.toolName !== UPDATE_PROJECT_TASK_TOOL_NAME) {
       return invalidArguments("The approval request was not found or has expired.");
     }
@@ -1230,7 +1230,7 @@ export async function executeUpdateProjectTask(
     assigneeId: params.assigneeId ?? "",
   };
   try {
-    const approval = createApprovalRequest({
+    const approval = await createApprovalRecord({
       requestId: context.requestId,
       toolName: UPDATE_PROJECT_TASK_TOOL_NAME,
       rawArguments,
