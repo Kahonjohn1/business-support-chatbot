@@ -3,52 +3,58 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { AppShell } from "@/components/workspace/AppShell";
 import {
-  getPersonalProjectById,
-  listPersonalTasks,
-} from "@/lib/personalProjectData";
+  ProjectEditForm,
+  TaskCreateForm,
+  TaskEditForm,
+} from "@/components/workspace/ProjectManagementForms";
 import type {
-  PersonalProjectRecord,
-  PersonalTaskRecord,
-} from "@/lib/personalProjectData";
-import { requireUserAuthorization } from "@/lib/workspace/authorization";
+  WorkspaceProjectRecord,
+  WorkspaceTaskRecord,
+} from "@/lib/workspace/workspaceProjectData";
+import {
+  getWorkspaceProjectById,
+  listWorkspaceTasks,
+} from "@/lib/workspace/workspaceProjectData";
+import { getActiveWorkspaceContext, toWorkspaceSwitcherView } from "@/lib/workspace/workspaceSelection";
 import { getConversationList, requireUserPage } from "@/lib/workspace/server";
+import { listWorkspaceAssignees } from "@/lib/workspace/workspaceTeamData";
 import { isUuid } from "@/lib/validation/uuid";
 
 export const instant = false;
 
-const PROJECT_STATUS_LABELS: Record<PersonalProjectRecord["status"], string> = {
+const PROJECT_STATUS_LABELS: Record<WorkspaceProjectRecord["status"], string> = {
   planned: "Planned",
   active: "Active",
   blocked: "Blocked",
   completed: "Completed",
 };
 
-const PROJECT_STATUS_CLASSES: Record<PersonalProjectRecord["status"], string> = {
+const PROJECT_STATUS_CLASSES: Record<WorkspaceProjectRecord["status"], string> = {
   planned: "bg-muted text-muted-foreground",
   active: "bg-accent text-accent-foreground",
   blocked: "bg-danger-subtle text-danger",
   completed: "bg-muted text-foreground",
 };
 
-const TASK_PRIORITY_LABELS: Record<PersonalTaskRecord["priority"], string> = {
+const TASK_PRIORITY_LABELS: Record<WorkspaceTaskRecord["priority"], string> = {
   low: "Low",
   medium: "Medium",
   high: "High",
 };
 
-const TASK_PRIORITY_CLASSES: Record<PersonalTaskRecord["priority"], string> = {
+const TASK_PRIORITY_CLASSES: Record<WorkspaceTaskRecord["priority"], string> = {
   low: "bg-muted text-muted-foreground",
   medium: "bg-accent text-accent-foreground",
   high: "bg-danger-subtle text-danger",
 };
 
-const TASK_STATUS_LABELS: Record<PersonalTaskRecord["status"], string> = {
+const TASK_STATUS_LABELS: Record<WorkspaceTaskRecord["status"], string> = {
   todo: "To do",
   in_progress: "In progress",
   done: "Done",
 };
 
-const TASK_STATUS_CLASSES: Record<PersonalTaskRecord["status"], string> = {
+const TASK_STATUS_CLASSES: Record<WorkspaceTaskRecord["status"], string> = {
   todo: "bg-muted text-muted-foreground",
   in_progress: "bg-accent text-accent-foreground",
   done: "bg-muted text-foreground",
@@ -73,12 +79,18 @@ export default async function ProjectDetailPage({
   if (!isUuid(id)) notFound();
 
   const context = await requireUserPage(`/projects/${id}`);
-  const auth = requireUserAuthorization(context);
-  const [conversations, details] = await Promise.all([
+  const { selection, auth } = await getActiveWorkspaceContext(context);
+  const canManage = auth.role !== "viewer";
+  const isShared =
+    selection.active.kind === "shared" &&
+    auth.workspaceKind === "shared" &&
+    auth.source === "verified_membership" &&
+    Boolean(auth.workspaceId);
+  const [conversations, details, assignees] = await Promise.all([
     getConversationList(context),
     Promise.all([
-      getPersonalProjectById(auth, id),
-      listPersonalTasks(auth, id),
+      getWorkspaceProjectById(auth, id),
+      listWorkspaceTasks(auth, id),
     ])
       .then(([project, tasks]) => ({
         project,
@@ -87,11 +99,16 @@ export default async function ProjectDetailPage({
       }))
       .catch(() => ({
         project: null,
-        tasks: [] as readonly PersonalTaskRecord[],
+        tasks: [] as readonly WorkspaceTaskRecord[],
         error: "Project details could not be loaded right now.",
       })),
+    isShared ? listWorkspaceAssignees(auth).catch(() => []) : Promise.resolve([]),
   ]);
   const { project, tasks, error: loadError } = details;
+  const assigneeOptions = assignees.map((assignee) => ({
+    id: assignee.id,
+    label: assignee.label,
+  }));
   if (!loadError && !project) notFound();
 
   return (
@@ -99,6 +116,7 @@ export default async function ProjectDetailPage({
       context={context}
       conversations={conversations}
       currentConversationId={null}
+      workspace={toWorkspaceSwitcherView(selection)}
     >
       <div className="w-full max-w-4xl">
         <Link
@@ -164,6 +182,25 @@ export default async function ProjectDetailPage({
               </section>
             </div>
 
+            {canManage ? (
+              <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                <ProjectEditForm
+                  project={{
+                    id: project.id,
+                    name: project.name,
+                    status: project.status,
+                    progressNotes: project.progressNotes,
+                    blockers: project.blockers,
+                  }}
+                />
+                <TaskCreateForm
+                  defaultProjectId={project.id}
+                  projects={[{ id: project.id, name: project.name }]}
+                  assignees={assigneeOptions}
+                />
+              </div>
+            ) : null}
+
             <section className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-xs">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-base font-semibold text-foreground">
@@ -178,7 +215,9 @@ export default async function ProjectDetailPage({
               </div>
               {tasks.length === 0 ? (
                 <p className="mt-4 text-sm text-muted-foreground">
-                  No tasks in this project yet.
+                  {canManage
+                    ? "No tasks in this project yet. Add one with the form above."
+                    : "No tasks in this project yet."}
                 </p>
               ) : (
                 <ul className="mt-4 divide-y divide-border">
@@ -195,7 +234,7 @@ export default async function ProjectDetailPage({
                           Assignee: {task.assignee}
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span
                           className={`rounded-full px-2 py-0.5 text-xs font-medium ${TASK_PRIORITY_CLASSES[task.priority]}`}
                         >
@@ -206,6 +245,9 @@ export default async function ProjectDetailPage({
                         >
                           {TASK_STATUS_LABELS[task.status]}
                         </span>
+                        {canManage ? (
+                          <TaskEditForm task={task} assignees={assigneeOptions} />
+                        ) : null}
                       </div>
                     </li>
                   ))}

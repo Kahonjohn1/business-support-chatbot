@@ -1,31 +1,39 @@
 import Link from "next/link";
 import { AppShell } from "@/components/workspace/AppShell";
-import { listPersonalProjects, listPersonalTasks } from "@/lib/personalProjectData";
-import type { PersonalTaskRecord } from "@/lib/personalProjectData";
-import { requireUserAuthorization } from "@/lib/workspace/authorization";
+import {
+  TaskCreateForm,
+  TaskEditForm,
+} from "@/components/workspace/ProjectManagementForms";
+import type { WorkspaceTaskRecord } from "@/lib/workspace/workspaceProjectData";
+import {
+  listWorkspaceProjects,
+  listWorkspaceTasks,
+} from "@/lib/workspace/workspaceProjectData";
+import { getActiveWorkspaceContext, toWorkspaceSwitcherView } from "@/lib/workspace/workspaceSelection";
 import { getConversationList, requireUserPage } from "@/lib/workspace/server";
+import { listWorkspaceAssignees } from "@/lib/workspace/workspaceTeamData";
 
 export const instant = false;
 
-const TASK_PRIORITY_LABELS: Record<PersonalTaskRecord["priority"], string> = {
+const TASK_PRIORITY_LABELS: Record<WorkspaceTaskRecord["priority"], string> = {
   low: "Low",
   medium: "Medium",
   high: "High",
 };
 
-const TASK_PRIORITY_CLASSES: Record<PersonalTaskRecord["priority"], string> = {
+const TASK_PRIORITY_CLASSES: Record<WorkspaceTaskRecord["priority"], string> = {
   low: "bg-muted text-muted-foreground",
   medium: "bg-accent text-accent-foreground",
   high: "bg-danger-subtle text-danger",
 };
 
-const TASK_STATUS_LABELS: Record<PersonalTaskRecord["status"], string> = {
+const TASK_STATUS_LABELS: Record<WorkspaceTaskRecord["status"], string> = {
   todo: "To do",
   in_progress: "In progress",
   done: "Done",
 };
 
-const TASK_STATUS_CLASSES: Record<PersonalTaskRecord["status"], string> = {
+const TASK_STATUS_CLASSES: Record<WorkspaceTaskRecord["status"], string> = {
   todo: "bg-muted text-muted-foreground",
   in_progress: "bg-accent text-accent-foreground",
   done: "bg-muted text-foreground",
@@ -33,20 +41,31 @@ const TASK_STATUS_CLASSES: Record<PersonalTaskRecord["status"], string> = {
 
 export default async function TasksPage() {
   const context = await requireUserPage("/tasks");
-  const auth = requireUserAuthorization(context);
-  const [conversations, groups] = await Promise.all([
+  const { selection, auth } = await getActiveWorkspaceContext(context);
+  const canManage = auth.role !== "viewer";
+  const isShared =
+    selection.active.kind === "shared" &&
+    auth.workspaceKind === "shared" &&
+    auth.source === "verified_membership" &&
+    Boolean(auth.workspaceId);
+  const [conversations, groups, assignees] = await Promise.all([
     getConversationList(context),
-    listPersonalProjects(auth)
+    listWorkspaceProjects(auth)
       .then((projects) =>
         Promise.all(
           projects.map(async (project) => ({
             project,
-            tasks: await listPersonalTasks(auth, project.id),
+            tasks: await listWorkspaceTasks(auth, project.id),
           }))
         )
       )
       .catch(() => null),
+    isShared ? listWorkspaceAssignees(auth).catch(() => []) : Promise.resolve([]),
   ]);
+  const assigneeOptions = assignees.map((assignee) => ({
+    id: assignee.id,
+    label: assignee.label,
+  }));
   const loadError =
     groups === null ? "Saved tasks could not be loaded right now." : null;
   const visibleGroups = groups ?? [];
@@ -56,13 +75,14 @@ export default async function TasksPage() {
       context={context}
       conversations={conversations}
       currentConversationId={null}
+      workspace={toWorkspaceSwitcherView(selection)}
     >
       <div className="w-full max-w-5xl">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Tasks</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Personal tasks grouped by project.
+              Tasks in {selection.active.name}, grouped by project.
             </p>
           </div>
           <Link
@@ -72,6 +92,18 @@ export default async function TasksPage() {
             View projects
           </Link>
         </div>
+
+        {canManage && !loadError ? (
+          <div className="mt-6">
+            <TaskCreateForm
+              projects={visibleGroups.map(({ project }) => ({
+                id: project.id,
+                name: project.name,
+              }))}
+              assignees={assigneeOptions}
+            />
+          </div>
+        ) : null}
 
         <div className="mt-6">
           {loadError ? (
@@ -83,10 +115,13 @@ export default async function TasksPage() {
             </div>
           ) : visibleGroups.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border bg-surface p-8 text-center">
-              <p className="font-medium">No projects with tasks yet</p>
+              <p className="font-medium">
+                No projects with tasks in {selection.active.name} yet
+              </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Ask Marque AI to create a project and its tasks, then they will
-                appear here.
+                {canManage
+                  ? "Create a project first, then add tasks with the form above or ask Marque AI."
+                  : "Ask a workspace manager to add projects and tasks in this workspace, or ask Marque AI if your role allows it."}
               </p>
             </div>
           ) : (
@@ -132,7 +167,7 @@ export default async function TasksPage() {
                               Assignee: {task.assignee}
                             </p>
                           </div>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span
                               className={`rounded-full px-2 py-0.5 text-xs font-medium ${TASK_PRIORITY_CLASSES[task.priority]}`}
                             >
@@ -143,6 +178,9 @@ export default async function TasksPage() {
                             >
                               {TASK_STATUS_LABELS[task.status]}
                             </span>
+                            {canManage ? (
+                              <TaskEditForm task={task} assignees={assigneeOptions} />
+                            ) : null}
                           </div>
                         </li>
                       ))}

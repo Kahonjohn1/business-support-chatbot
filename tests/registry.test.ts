@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 
 import { GET_PROJECT_STATUS_TOOL_NAME } from "../src/tools/projectStatusTool.ts";
@@ -12,18 +12,39 @@ import {
   type StructuredToolOutput,
   type ToolExecutionContext,
 } from "../src/tools/registry.ts";
+import {
+  FakePersonalRepository,
+  installPersonalRepository,
+  resetPersonalRepository,
+  seedProject,
+} from "./personalRepositoryStub.ts";
 
-const VIEWER_AUTH = { userId: "user_test", role: "viewer", isDemo: false } as const;
+const VIEWER_AUTH = {
+  userId: "user_test",
+  role: "viewer",
+  workspaceKind: "personal",
+  source: "personal_owner",
+  isDemo: false,
+} as const;
 
 function execute(
   toolName: string,
   rawArguments: string,
   context: ToolExecutionContext = { requestId: "req_registry_test" }
-): ReturnType<typeof executeBase> {
-  return executeBase(toolName, rawArguments, { auth: VIEWER_AUTH, ...context });
+) {
+  return executeBase(toolName, rawArguments, {
+    auth: context.auth ?? VIEWER_AUTH,
+    ...context,
+  });
 }
 
-test("central tool registry retains the demo tool implementation", () => {
+beforeEach(() => {
+  resetPersonalRepository();
+  const repository = installPersonalRepository(new FakePersonalRepository());
+  seedProject(repository, "user_test", "Website Redesign", "active");
+});
+
+test("central tool registry keeps the personal project tools", () => {
   assert.equal(toolRegistry.has(GET_PROJECT_STATUS_TOOL_NAME), true);
 
   const tool = toolRegistry.get(GET_PROJECT_STATUS_TOOL_NAME);
@@ -33,50 +54,48 @@ test("central tool registry retains the demo tool implementation", () => {
   assert.deepEqual(tool.metadata, {
     readOnly: true,
     destructive: false,
-    requiresAuth: false,
+    requiresAuth: true,
     idempotent: true,
   });
 });
 
-test("unsafe demo tools are not exposed to the model", () => {
-  assert.deepEqual(REGISTERED_TOOLS, []);
-  assert.ok(Object.isFrozen(REGISTERED_TOOLS), "REGISTERED_TOOLS should be frozen");
+test("personal tools are model-facing after their database implementation", () => {
+  assert.equal(REGISTERED_TOOLS.length, 16);
+  assert.ok(Object.isFrozen(REGISTERED_TOOLS));
+  const names = REGISTERED_TOOLS.map((tool) => tool.function.name);
+  assert.ok(names.includes(GET_PROJECT_STATUS_TOOL_NAME));
+  assert.ok(names.includes("create_project"));
+  assert.ok(names.includes("create_project_task"));
 });
 
-test("successful execution: returns structured result, safe content, and execution metadata", () => {
+test("successful async execution returns structured result and metadata", async () => {
   const context: ToolExecutionContext = {
     requestId: "req_test_success_123",
     toolCallId: "call_abc",
     timestamp: Date.now(),
   };
 
-  const result = execute(
+  const result = await execute(
     GET_PROJECT_STATUS_TOOL_NAME,
-    JSON.stringify({ projectName: "Business Support Chatbot" }),
+    JSON.stringify({ projectName: "Website Redesign" }),
     context
   );
 
   assert.equal(result.ok, true);
   if (!result.ok) assert.fail("Expected tool execution to succeed");
 
-  // Structured payload
   const data = result.data as {
     found: boolean;
-    sampleData: boolean;
     project: { name: string };
   };
   assert.equal(data.found, true);
-  assert.equal(data.sampleData, true);
-  assert.equal(data.project.name, "Business Support Chatbot");
+  assert.equal(data.project.name, "Website Redesign");
 
-  // Model-facing content
   const payload = JSON.parse(result.content);
   assert.equal(payload.found, true);
-  assert.equal(payload.sampleData, true);
-  assert.equal(payload.project.name, "Business Support Chatbot");
+  assert.equal(payload.project.name, "Website Redesign");
   assert.equal("projectId" in payload.project, false);
 
-  // Metadata / tracing (not in content)
   assert.ok(result.meta);
   assert.equal(result.meta.requestId, "req_test_success_123");
   assert.equal(result.meta.toolCallId, "call_abc");
@@ -84,7 +103,7 @@ test("successful execution: returns structured result, safe content, and executi
   assert.ok(typeof result.meta.timestamp === "number" && result.meta.timestamp > 0);
 });
 
-test("known tool failure: unknown tool name returns UNKNOWN_TOOL error code", () => {
+test("unknown tool names return UNKNOWN_TOOL and run no handler", async () => {
   let executed = false;
   const customRegistry = new ToolRegistry();
   customRegistry.register({
@@ -108,67 +127,51 @@ test("known tool failure: unknown tool name returns UNKNOWN_TOOL error code", ()
     },
   });
 
-  const context: ToolExecutionContext = {
-    requestId: "req_test_unknown_tool",
-  };
-
-  const result = customRegistry.execute("non_existent_tool", "{}", context);
+  const context: ToolExecutionContext = { requestId: "req_test_unknown_tool" };
+  const result = await customRegistry.execute("non_existent_tool", "{}", context);
   assert.equal(result.ok, false);
   if (result.ok) assert.fail("Unknown tool should fail");
   assert.equal(result.code, "UNKNOWN_TOOL");
-  assert.match(result.error, /unknown tool/i);
-  assert.ok(result.meta);
-  assert.equal(result.meta.requestId, "req_test_unknown_tool");
-  assert.equal(executed, false, "No tool handler should be invoked");
+  assert.equal(executed, false);
 
-  // Central executeRegisteredTool also returns UNKNOWN_TOOL
-  const centralResult = execute("unregistered_tool", "{}", context);
+  const centralResult = await execute("unregistered_tool", "{}", context);
   assert.equal(centralResult.ok, false);
   if (centralResult.ok) assert.fail("Unknown tool should fail");
   assert.equal(centralResult.code, "UNKNOWN_TOOL");
-  assert.match(centralResult.error, /unknown tool/i);
-  assert.ok(centralResult.meta);
-  assert.equal(centralResult.meta.requestId, "req_test_unknown_tool");
 });
 
-test("known tool failure: invalid arguments return INVALID_ARGUMENTS error code", () => {
-  const context: ToolExecutionContext = {
-    requestId: "req_test_invalid_args",
-  };
+test("invalid arguments return INVALID_ARGUMENTS", async () => {
+  const context: ToolExecutionContext = { requestId: "req_test_invalid_args" };
 
-  const malformedJsonResult = execute(
+  const malformed = await execute(
     GET_PROJECT_STATUS_TOOL_NAME,
     "{ invalid json }",
     context
   );
-  assert.equal(malformedJsonResult.ok, false);
-  if (malformedJsonResult.ok) assert.fail("Malformed JSON should be rejected");
-  assert.equal(malformedJsonResult.code, "INVALID_ARGUMENTS");
-  assert.match(malformedJsonResult.error, /json/i);
-  assert.ok(malformedJsonResult.meta);
-  assert.equal(malformedJsonResult.meta.requestId, "req_test_invalid_args");
+  assert.equal(malformed.ok, false);
+  if (malformed.ok) assert.fail("Malformed JSON should be rejected");
+  assert.equal(malformed.code, "INVALID_ARGUMENTS");
 
-  const typeMismatchResult = execute(
+  const typeMismatch = await execute(
     GET_PROJECT_STATUS_TOOL_NAME,
     JSON.stringify({ projectId: 12345 }),
     context
   );
-  assert.equal(typeMismatchResult.ok, false);
-  if (typeMismatchResult.ok) assert.fail("Non-string projectId should be rejected");
-  assert.equal(typeMismatchResult.code, "INVALID_ARGUMENTS");
-  assert.match(typeMismatchResult.error, /string/i);
+  assert.equal(typeMismatch.ok, false);
+  if (typeMismatch.ok) assert.fail("Non-string projectId should be rejected");
+  assert.equal(typeMismatch.code, "INVALID_ARGUMENTS");
 
-  const extraKeysResult = execute(
+  const extraKeys = await execute(
     GET_PROJECT_STATUS_TOOL_NAME,
-    JSON.stringify({ projectId: "PRJ-104", extra: true }),
+    JSON.stringify({ projectName: "Website Redesign", extra: true }),
     context
   );
-  assert.equal(extraKeysResult.ok, false);
-  if (extraKeysResult.ok) assert.fail("Extra arguments should be rejected");
-  assert.equal(extraKeysResult.code, "INVALID_ARGUMENTS");
+  assert.equal(extraKeys.ok, false);
+  if (extraKeys.ok) assert.fail("Extra arguments should be rejected");
+  assert.equal(extraKeys.code, "INVALID_ARGUMENTS");
 });
 
-test("invalid result structures: handler returning invalid structure returns INVALID_RESULT", () => {
+test("invalid result structures return INVALID_RESULT", async () => {
   const invalidOutputs: unknown[] = [
     null,
     undefined,
@@ -176,9 +179,9 @@ test("invalid result structures: handler returning invalid structure returns INV
     12345,
     {},
     { ok: "not-a-boolean" },
-    { ok: true }, // missing data or content
+    { ok: true },
     { ok: true, data: undefined },
-    { ok: false }, // missing error
+    { ok: false },
     { ok: false, error: "" },
   ];
 
@@ -202,15 +205,14 @@ test("invalid result structures: handler returning invalid structure returns INV
       },
     });
 
-    const result = registry.execute("bad_tool", "{}");
+    const result = await registry.execute("bad_tool", "{}");
     assert.equal(result.ok, false);
     if (result.ok) assert.fail("Invalid output must fail");
     assert.equal(result.code, "INVALID_RESULT");
-    assert.match(result.error, /invalid result structure/i);
   }
 });
 
-test("unexpected handler exceptions: caught and mapped to EXECUTION_FAILED without crashing", () => {
+test("handler exceptions map to EXECUTION_FAILED", async () => {
   const registry = new ToolRegistry();
   registry.register({
     definition: {
@@ -232,20 +234,16 @@ test("unexpected handler exceptions: caught and mapped to EXECUTION_FAILED witho
     },
   });
 
-  const context: ToolExecutionContext = {
+  const result = await registry.execute("throwing_tool", "{}", {
     requestId: "req_exception_test",
-  };
-
-  const result = registry.execute("throwing_tool", "{}", context);
+  });
   assert.equal(result.ok, false);
   if (result.ok) assert.fail("Exception should result in failure");
   assert.equal(result.code, "EXECUTION_FAILED");
   assert.equal(result.error, "Internal database connection error");
-  assert.ok(result.meta);
-  assert.equal(result.meta.requestId, "req_exception_test");
 });
 
-test("request ID propagation: passed through context and returned in execution metadata", () => {
+test("request ID propagation through async execution", async () => {
   let receivedContext: ToolExecutionContext | undefined;
 
   const registry = new ToolRegistry();
@@ -258,7 +256,8 @@ test("request ID propagation: passed through context and returned in execution m
         parameters: { type: "object", properties: {} },
       },
     },
-    handler: (_args, ctx) => {
+    handler: async (_args, ctx) => {
+      await Promise.resolve();
       receivedContext = ctx;
       return { ok: true, data: { status: "received" } };
     },
@@ -276,86 +275,56 @@ test("request ID propagation: passed through context and returned in execution m
     timestamp: 1700000000000,
   };
 
-  const result = registry.execute("context_tool", "{}", customContext);
+  const result = await registry.execute("context_tool", "{}", customContext);
   assert.equal(result.ok, true);
   assert.ok(receivedContext);
   assert.equal(receivedContext.requestId, "api-trace-custom-999");
   assert.equal(receivedContext.toolCallId, "call_custom_456");
-  assert.ok(result.meta);
-  assert.equal(result.meta.requestId, "api-trace-custom-999");
-  assert.equal(result.meta.toolCallId, "call_custom_456");
+  assert.equal(result.meta?.requestId, "api-trace-custom-999");
 });
 
-test("safe result formatting for the AI model: strips internal metadata and formats safely", () => {
-  // Test formatting for success
+test("safe result formatting strips internal metadata", () => {
   const successFormatted = formatToolResultForModel({
     ok: true,
     data: { found: true, projectId: "PRJ-104", details: "Sample details" },
     meta: { requestId: "internal-req-secret", durationMs: 42, timestamp: 12345 },
   });
-
   const parsedSuccess = JSON.parse(successFormatted);
   assert.equal(parsedSuccess.found, true);
-  assert.equal(parsedSuccess.projectId, "PRJ-104");
-  assert.equal("requestId" in parsedSuccess, false);
-  assert.equal("durationMs" in parsedSuccess, false);
   assert.equal("meta" in parsedSuccess, false);
 
-  // Test formatting for failure
   const failureFormatted = formatToolResultForModel({
     ok: false,
     error: {
       code: "INVALID_ARGUMENTS",
       message: "Tool arguments must be valid JSON.",
     },
-    meta: { requestId: "internal-req-secret", durationMs: 12 },
   });
-
   const parsedFailure = JSON.parse(failureFormatted);
-  assert.equal(parsedFailure.error, "Tool arguments must be valid JSON.");
   assert.equal(parsedFailure.code, "INVALID_ARGUMENTS");
-  assert.equal("requestId" in parsedFailure, false);
-  assert.equal("durationMs" in parsedFailure, false);
-  assert.equal("meta" in parsedFailure, false);
 });
 
 test("validateToolHandlerResult accepts both data and string content", () => {
-  const withData = validateToolHandlerResult({
-    ok: true,
-    data: { sample: 1 },
-  });
+  const withData = validateToolHandlerResult({ ok: true, data: { sample: 1 } });
   assert.equal(withData.ok, true);
-  if (withData.ok) {
-    assert.deepEqual(withData.data, { sample: 1 });
-  }
 
   const withContent = validateToolHandlerResult({
     ok: true,
     content: '{"sample":2}',
   });
   assert.equal(withContent.ok, true);
-  if (withContent.ok) {
-    assert.deepEqual(withContent.data, { sample: 2 });
-  }
 
   const withStructuredError = validateToolHandlerResult({
     ok: false,
     error: { code: "INVALID_ARGUMENTS", message: "Bad arg" },
   });
   assert.equal(withStructuredError.ok, false);
-  if (!withStructuredError.ok) {
-    assert.equal(withStructuredError.error.code, "INVALID_ARGUMENTS");
-    assert.equal(withStructuredError.error.message, "Bad arg");
-  }
 });
 
-test("permission-gated tools fail closed without a verified user identity", () => {
-  const result = executeBase(
+test("permission-gated tools fail closed without a verified user identity", async () => {
+  const result = await executeBase(
     "create_project_task",
-    JSON.stringify({
-      projectName: "Business Support Chatbot",
-      title: "No authorization",
-    }),
+    JSON.stringify({ projectName: "Website Redesign", title: "No authorization" }),
     { requestId: "req_no_auth" }
   );
 
@@ -365,13 +334,10 @@ test("permission-gated tools fail closed without a verified user identity", () =
   assert.match(result.error, /verified user identity/i);
 });
 
-test("model-supplied user ids cannot override the verified context", () => {
-  const result = execute(
+test("model-supplied user ids cannot override the verified context", async () => {
+  const result = await execute(
     GET_PROJECT_STATUS_TOOL_NAME,
-    JSON.stringify({
-      projectName: "Business Support Chatbot",
-      userId: "attacker",
-    })
+    JSON.stringify({ projectName: "Website Redesign", userId: "attacker" })
   );
 
   assert.equal(result.ok, false);

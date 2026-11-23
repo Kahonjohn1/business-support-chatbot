@@ -7,21 +7,77 @@ import type {
   ToolExecutionResult,
 } from "@/lib/toolCalling";
 import {
+  CREATE_PROJECT_TOOL,
+  CREATE_PROJECT_TOOL_NAME,
+  CREATE_PROJECT_METADATA,
   GET_PROJECT_STATUS_TOOL,
+  GET_PROJECT_STATUS_TOOL_NAME,
   GET_PROJECT_STATUS_METADATA,
   LIST_PROJECTS_TOOL,
+  LIST_PROJECTS_TOOL_NAME,
   LIST_PROJECTS_METADATA,
+  UPDATE_PROJECT_TOOL,
+  UPDATE_PROJECT_TOOL_NAME,
+  UPDATE_PROJECT_METADATA,
+  executeCreateProject,
   executeGetProjectStatus,
   executeListProjects,
+  executeUpdateProject,
 } from "@/tools/projectStatusTool";
 import {
   CREATE_PROJECT_TASK_TOOL,
+  CREATE_PROJECT_TASK_TOOL_NAME,
   CREATE_PROJECT_TASK_METADATA,
+  UPDATE_PROJECT_TASK_TOOL,
+  UPDATE_PROJECT_TASK_TOOL_NAME,
+  UPDATE_PROJECT_TASK_METADATA,
   executeCreateProjectTask,
-  LIST_PROJECT_TASKS_TOOL,
-  LIST_PROJECT_TASKS_METADATA,
   executeListProjectTasks,
+  executeUpdateProjectTask,
+  LIST_PROJECT_TASKS_TOOL,
+  LIST_PROJECT_TASKS_TOOL_NAME,
+  LIST_PROJECT_TASKS_METADATA,
 } from "@/tools/tasksTool";
+import {
+  CHECK_INTEGRATION_CALENDAR_AVAILABILITY_TOOL,
+  CHECK_INTEGRATION_CALENDAR_AVAILABILITY_TOOL_NAME,
+  CHECK_INTEGRATION_CALENDAR_AVAILABILITY_METADATA,
+  LIST_INTEGRATION_CALENDAR_EVENTS_TOOL,
+  LIST_INTEGRATION_CALENDAR_EVENTS_TOOL_NAME,
+  LIST_INTEGRATION_CALENDAR_EVENTS_METADATA,
+  PREPARE_INTEGRATION_CALENDAR_EVENT_TOOL,
+  PREPARE_INTEGRATION_CALENDAR_EVENT_TOOL_NAME,
+  PREPARE_INTEGRATION_CALENDAR_EVENT_METADATA,
+  PREPARE_INTEGRATION_EMAIL_DRAFT_TOOL,
+  PREPARE_INTEGRATION_EMAIL_DRAFT_TOOL_NAME,
+  PREPARE_INTEGRATION_EMAIL_DRAFT_METADATA,
+  READ_INTEGRATION_EMAIL_TOOL,
+  READ_INTEGRATION_EMAIL_TOOL_NAME,
+  READ_INTEGRATION_EMAIL_METADATA,
+  SEARCH_INTEGRATION_EMAIL_TOOL,
+  SEARCH_INTEGRATION_EMAIL_TOOL_NAME,
+  SEARCH_INTEGRATION_EMAIL_METADATA,
+  executeCheckIntegrationCalendarAvailability,
+  executeListIntegrationCalendarEvents,
+  executePrepareIntegrationCalendarEvent,
+  executePrepareIntegrationEmailDraft,
+  executeReadIntegrationEmail,
+  executeSearchIntegrationEmail,
+} from "@/tools/integrationTools";
+import {
+  LIST_AUTOMATION_WORKFLOWS_METADATA,
+  LIST_AUTOMATION_WORKFLOWS_TOOL,
+  LIST_AUTOMATION_WORKFLOWS_TOOL_NAME,
+  PREPARE_AUTOMATION_WORKFLOW_METADATA,
+  PREPARE_AUTOMATION_WORKFLOW_TOOL,
+  PREPARE_AUTOMATION_WORKFLOW_TOOL_NAME,
+  PROPOSE_AUTOMATION_WORKFLOW_METADATA,
+  PROPOSE_AUTOMATION_WORKFLOW_TOOL,
+  PROPOSE_AUTOMATION_WORKFLOW_TOOL_NAME,
+  executeListAutomationWorkflows,
+  executePrepareAutomationWorkflow,
+  executeProposeAutomationWorkflow,
+} from "@/tools/automationTools";
 import {
   checkPermission,
   hasPermissionPolicy,
@@ -102,7 +158,7 @@ export type StructuredToolOutput<T = unknown> =
 export type ToolHandler = (
   rawArguments: string,
   context: ToolExecutionContext
-) => StructuredToolOutput;
+) => StructuredToolOutput | Promise<StructuredToolOutput>;
 
 export interface RegisteredTool {
   readonly definition: ToolDefinition;
@@ -295,11 +351,11 @@ export class ToolRegistry {
    * server-side permissions enforcement, runtime validation, error codes,
    * and audit logging.
    */
-  execute(
+  async execute(
     name: string,
     rawArguments: string,
     context?: ToolExecutionContext
-  ): ToolExecutionResult {
+  ): Promise<ToolExecutionResult> {
     const t0 = Date.now();
     const ctx = context ?? createDefaultExecutionContext();
     const tool = this.tools.get(name);
@@ -404,7 +460,7 @@ export class ToolRegistry {
 
     let rawHandlerResult: unknown;
     try {
-      rawHandlerResult = tool.handler(rawArguments, ctx);
+      rawHandlerResult = await tool.handler(rawArguments, ctx);
     } catch (error) {
       const durationMs = Date.now() - t0;
       const errorMessage =
@@ -511,7 +567,19 @@ export class ToolRegistry {
 /** Central tool registry instance for the application. */
 export const toolRegistry = new ToolRegistry();
 
-// Register the read-only project tools.
+// Register the personal project tools.
+toolRegistry.register({
+  definition: CREATE_PROJECT_TOOL,
+  handler: executeCreateProject,
+  metadata: CREATE_PROJECT_METADATA,
+});
+
+toolRegistry.register({
+  definition: UPDATE_PROJECT_TOOL,
+  handler: executeUpdateProject,
+  metadata: UPDATE_PROJECT_METADATA,
+});
+
 toolRegistry.register({
   definition: GET_PROJECT_STATUS_TOOL,
   handler: executeGetProjectStatus,
@@ -532,12 +600,89 @@ toolRegistry.register({
 });
 
 toolRegistry.register({
+  definition: UPDATE_PROJECT_TASK_TOOL,
+  handler: executeUpdateProjectTask,
+  metadata: UPDATE_PROJECT_TASK_METADATA,
+});
+
+toolRegistry.register({
   definition: LIST_PROJECT_TASKS_TOOL,
   handler: executeListProjectTasks,
   metadata: LIST_PROJECT_TASKS_METADATA,
 });
 
-const MODEL_FACING_TOOL_NAMES: readonly string[] = [];
+toolRegistry.register({
+  definition: SEARCH_INTEGRATION_EMAIL_TOOL,
+  handler: executeSearchIntegrationEmail,
+  metadata: SEARCH_INTEGRATION_EMAIL_METADATA,
+});
+
+toolRegistry.register({
+  definition: READ_INTEGRATION_EMAIL_TOOL,
+  handler: executeReadIntegrationEmail,
+  metadata: READ_INTEGRATION_EMAIL_METADATA,
+});
+
+toolRegistry.register({
+  definition: LIST_INTEGRATION_CALENDAR_EVENTS_TOOL,
+  handler: executeListIntegrationCalendarEvents,
+  metadata: LIST_INTEGRATION_CALENDAR_EVENTS_METADATA,
+});
+
+toolRegistry.register({
+  definition: CHECK_INTEGRATION_CALENDAR_AVAILABILITY_TOOL,
+  handler: executeCheckIntegrationCalendarAvailability,
+  metadata: CHECK_INTEGRATION_CALENDAR_AVAILABILITY_METADATA,
+});
+
+toolRegistry.register({
+  definition: PREPARE_INTEGRATION_EMAIL_DRAFT_TOOL,
+  handler: executePrepareIntegrationEmailDraft,
+  metadata: PREPARE_INTEGRATION_EMAIL_DRAFT_METADATA,
+});
+
+toolRegistry.register({
+  definition: PREPARE_INTEGRATION_CALENDAR_EVENT_TOOL,
+  handler: executePrepareIntegrationCalendarEvent,
+  metadata: PREPARE_INTEGRATION_CALENDAR_EVENT_METADATA,
+});
+
+toolRegistry.register({
+  definition: PROPOSE_AUTOMATION_WORKFLOW_TOOL,
+  handler: executeProposeAutomationWorkflow,
+  metadata: PROPOSE_AUTOMATION_WORKFLOW_METADATA,
+});
+
+toolRegistry.register({
+  definition: LIST_AUTOMATION_WORKFLOWS_TOOL,
+  handler: executeListAutomationWorkflows,
+  metadata: LIST_AUTOMATION_WORKFLOWS_METADATA,
+});
+
+toolRegistry.register({
+  definition: PREPARE_AUTOMATION_WORKFLOW_TOOL,
+  handler: executePrepareAutomationWorkflow,
+  metadata: PREPARE_AUTOMATION_WORKFLOW_METADATA,
+});
+
+const MODEL_FACING_TOOL_NAMES: readonly string[] = [
+  CREATE_PROJECT_TOOL_NAME,
+  UPDATE_PROJECT_TOOL_NAME,
+  GET_PROJECT_STATUS_TOOL_NAME,
+  LIST_PROJECTS_TOOL_NAME,
+  CREATE_PROJECT_TASK_TOOL_NAME,
+  UPDATE_PROJECT_TASK_TOOL_NAME,
+  LIST_PROJECT_TASKS_TOOL_NAME,
+  SEARCH_INTEGRATION_EMAIL_TOOL_NAME,
+  READ_INTEGRATION_EMAIL_TOOL_NAME,
+  LIST_INTEGRATION_CALENDAR_EVENTS_TOOL_NAME,
+  CHECK_INTEGRATION_CALENDAR_AVAILABILITY_TOOL_NAME,
+  PREPARE_INTEGRATION_EMAIL_DRAFT_TOOL_NAME,
+  PREPARE_INTEGRATION_CALENDAR_EVENT_TOOL_NAME,
+  PROPOSE_AUTOMATION_WORKFLOW_TOOL_NAME,
+  LIST_AUTOMATION_WORKFLOWS_TOOL_NAME,
+  PREPARE_AUTOMATION_WORKFLOW_TOOL_NAME,
+];
 
 export const REGISTERED_TOOLS: readonly ToolDefinition[] = Object.freeze(
   toolRegistry
@@ -551,10 +696,10 @@ export const REGISTERED_TOOLS: readonly ToolDefinition[] = Object.freeze(
 /**
  * Resolves and executes a tool through the central registry.
  */
-export function executeRegisteredTool(
+export async function executeRegisteredTool(
   toolName: string,
   rawArguments: string,
   context?: ToolExecutionContext
-): ToolExecutionResult {
+): Promise<ToolExecutionResult> {
   return toolRegistry.execute(toolName, rawArguments, context);
 }
