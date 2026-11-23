@@ -17,7 +17,7 @@ function matches(
   filter: IntegrationConnectionFilter
 ): boolean {
   if (record.scope !== filter.scope) return false;
-  if (filter.scope === "personal") return record.ownerUserId === filter.userId;
+  if (record.ownerUserId !== filter.userId) return false;
   return record.workspaceId === filter.workspaceId;
 }
 

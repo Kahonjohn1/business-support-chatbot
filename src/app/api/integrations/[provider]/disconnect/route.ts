@@ -3,12 +3,13 @@ import { disconnectIntegration } from "@/lib/integrations/data";
 import { isIntegrationProviderId } from "@/lib/integrations/providers";
 import { INTEGRATION_PERMISSION_TOOL_NAMES } from "@/lib/permissions";
 import { getActiveProjectManagementAuth } from "@/lib/workspace/projectManagementAuth";
+import { enforceRateLimit, RATE_LIMIT_POLICIES } from "@/lib/requestRateLimit";
 
 interface RouteContext {
   readonly params: Promise<{ provider: string }>;
 }
 
-export async function POST(_request: Request, context: RouteContext): Promise<Response> {
+export async function POST(request: Request, context: RouteContext): Promise<Response> {
   try {
     const { provider: providerParam } = await context.params;
     if (!isIntegrationProviderId(providerParam)) {
@@ -21,6 +22,12 @@ export async function POST(_request: Request, context: RouteContext): Promise<Re
       auth
     );
     if (permissionError) return permissionError;
+
+    const limited = await enforceRateLimit(request, RATE_LIMIT_POLICIES.integration, {
+      userId: auth.userId,
+      workspaceId: auth.workspaceId ?? null,
+    });
+    if (limited) return limited;
 
     await disconnectIntegration(auth, providerParam);
     return Response.json({ ok: true }, { headers: { "cache-control": "no-store" } });

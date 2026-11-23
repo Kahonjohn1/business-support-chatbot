@@ -12,6 +12,7 @@ import type {
 
 const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
+const REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke";
 const USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo";
 export const INTEGRATION_OAUTH_COOKIE = "marque_support_integration_oauth";
 export const INTEGRATION_OAUTH_MAX_AGE_SECONDS = 600;
@@ -54,13 +55,20 @@ export function createIntegrationPkcePair(): IntegrationPkcePair {
   return { verifier, challenge };
 }
 
+export function integrationOAuthCookieName(state: string): string {
+  if (!state || !/^[A-Za-z0-9_-]+$/.test(state)) {
+    throw new IntegrationError(400, "INVALID_REQUEST", "Integration request is invalid.");
+  }
+  return `${INTEGRATION_OAUTH_COOKIE}.${state}`;
+}
+
 export function createIntegrationOAuthState(input: {
   provider: IntegrationProviderId;
   userId: string;
   scope: IntegrationConnectionScope;
   workspaceId: string | null;
   codeVerifier: string;
-}): { state: string; cookieValue: string } {
+}): { state: string; cookieValue: string; cookieName: string } {
   const issuedAt = Date.now();
   const payload: IntegrationOAuthState = {
     provider: input.provider,
@@ -77,9 +85,10 @@ export function createIntegrationOAuthState(input: {
       state,
       payload,
       codeVerifier: input.codeVerifier,
-    })
+    }),
+    { purpose: "oauth_state", state }
   );
-  return { state, cookieValue };
+  return { state, cookieValue, cookieName: integrationOAuthCookieName(state) };
 }
 
 function validateIntegrationOAuthState(
@@ -92,7 +101,9 @@ function validateIntegrationOAuthState(
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(decryptIntegrationSecret(cookieValue));
+    parsed = JSON.parse(
+      decryptIntegrationSecret(cookieValue, { purpose: "oauth_state", state: expectedState })
+    );
   } catch {
     throw new IntegrationError(400, "INVALID_REQUEST", "Integration request expired.");
   }
@@ -279,6 +290,24 @@ export function refreshGoogleAccessToken(
     },
     fetchImpl
   );
+}
+
+export async function revokeGoogleAccessToken(
+  token: string,
+  fetchImpl: FetchLike = fetch
+): Promise<boolean> {
+  if (!token) return false;
+  try {
+    const response = await fetchImpl(REVOKE_ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token }).toString(),
+      cache: "no-store",
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 export function hasRequiredIntegrationScopes(

@@ -1,3 +1,4 @@
+import { enforceRateLimit, RATE_LIMIT_POLICIES } from "@/lib/requestRateLimit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -75,6 +76,8 @@ function getCallbackErrorFields(error: unknown): Record<string, string | null> {
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const next = safeNextPath(request.nextUrl.searchParams.get("next"));
+  const limited = await enforceRateLimit(request, RATE_LIMIT_POLICIES.auth, { token: code });
+  if (limited) return limited;
   const supabase = await createSupabaseServerClient();
 
   if (!code) {

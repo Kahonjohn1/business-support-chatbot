@@ -17,6 +17,15 @@ import {
 
 const KEY_NAME = "INTEGRATION_TOKEN_ENCRYPTION_KEY";
 const TEST_KEY = "ayF9L3nQ8vR2sT5uW7xZ0aB4cD6eF8gH1jK4mN7pQ9s";
+
+function binding(userId: string) {
+  return {
+    purpose: "connection",
+    provider: "gmail",
+    ownerUserId: userId,
+    workspaceId: null,
+  } as const;
+}
 const READER_AUTH = {
   userId: "user-reader",
   role: "viewer",
@@ -46,12 +55,12 @@ beforeEach(() => {
   seedIntegrationConnection(repository, {
     userId: READER_AUTH.userId,
     provider: "gmail",
-    encryptedAccessToken: encryptIntegrationSecret("google-access-token"),
+    encryptedAccessToken: encryptIntegrationSecret("google-access-token", binding(READER_AUTH.userId)),
   });
   seedIntegrationConnection(repository, {
     userId: OPERATOR_AUTH.userId,
     provider: "gmail",
-    encryptedAccessToken: encryptIntegrationSecret("operator-access-token"),
+    encryptedAccessToken: encryptIntegrationSecret("operator-access-token", binding(OPERATOR_AUTH.userId)),
   });
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();

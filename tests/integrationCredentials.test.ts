@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 
-import { getIntegrationProviderConfigStatus } from "../src/lib/integrations/config.ts";
+import {
+  getIntegrationProviderConfigStatus,
+  resolveTrustedRedirectOrigin,
+} from "../src/lib/integrations/config.ts";
 import {
   decryptIntegrationSecret,
   encryptIntegrationSecret,
@@ -10,6 +13,9 @@ import { INTEGRATION_PROVIDERS } from "../src/lib/integrations/providers.ts";
 
 const KEY_NAME = "INTEGRATION_TOKEN_ENCRYPTION_KEY";
 const OAUTH_ENV_NAMES = [
+  "NODE_ENV",
+  "INTEGRATION_APP_ORIGINS",
+  "INTEGRATION_TOKEN_ENCRYPTION_KEY_PREVIOUS",
   "GOOGLE_OAUTH_CLIENT_ID",
   "GOOGLE_OAUTH_CLIENT_SECRET",
   "GOOGLE_OAUTH_REDIRECT_URI",
@@ -36,23 +42,48 @@ afterEach(() => {
   originalEnv.clear();
 });
 
+const BINDING = {
+  purpose: "connection",
+  provider: "gmail",
+  ownerUserId: "user-1",
+  workspaceId: null,
+} as const;
+
 test("integration tokens are encrypted and decrypted with authenticated encryption", () => {
   const secret = "access-token-value";
-  const encrypted = encryptIntegrationSecret(secret);
+  const encrypted = encryptIntegrationSecret(secret, BINDING);
 
   assert.notEqual(encrypted, secret);
   assert.equal(encrypted.includes(secret), false);
-  assert.match(encrypted, /^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
-  assert.equal(decryptIntegrationSecret(encrypted), secret);
+  assert.match(
+    encrypted,
+    /^v2\.[a-f0-9]{12}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
+  );
+  assert.equal(decryptIntegrationSecret(encrypted, BINDING), secret);
 
   const tampered = `${encrypted.slice(0, -2)}AA`;
-  assert.throws(() => decryptIntegrationSecret(tampered));
+  assert.throws(() => decryptIntegrationSecret(tampered, BINDING));
 });
 
-test("a different encryption key cannot decrypt stored tokens", () => {
-  const encrypted = encryptIntegrationSecret("refresh-token-value");
+test("credentials cannot be transplanted between connections", () => {
+  const encrypted = encryptIntegrationSecret("refresh-token-value", BINDING);
+  assert.throws(() =>
+    decryptIntegrationSecret(encrypted, {
+      ...BINDING,
+      ownerUserId: "user-2",
+    })
+  );
+});
+
+test("a previous encryption key can decrypt rotated credentials", () => {
+  const encrypted = encryptIntegrationSecret("refresh-token-value", BINDING);
+  process.env.INTEGRATION_TOKEN_ENCRYPTION_KEY_PREVIOUS = TEST_KEY;
   process.env[KEY_NAME] = OTHER_KEY;
-  assert.throws(() => decryptIntegrationSecret(encrypted));
+  assert.equal(decryptIntegrationSecret(encrypted, BINDING), "refresh-token-value");
+
+  process.env.INTEGRATION_TOKEN_ENCRYPTION_KEY_PREVIOUS = "";
+  const rotated = encryptIntegrationSecret("new-token-value", BINDING);
+  assert.equal(decryptIntegrationSecret(rotated, BINDING), "new-token-value");
 });
 
 test("provider configuration reports missing setup without exposing values", () => {
@@ -66,6 +97,24 @@ test("provider configuration reports missing setup without exposing values", () 
   assert.equal(status.configured, false);
   assert.deepEqual(status.missingConfig, ["GOOGLE_OAUTH_CLIENT_SECRET"]);
   assert.equal(JSON.stringify(status).includes("secret-test"), false);
+});
+
+test("OAuth redirects use a canonical trusted origin", () => {
+  process.env.INTEGRATION_APP_ORIGINS = "https://app.example.com";
+  const request = new Request("https://evil.example.com/api/integrations/callback", {
+    headers: { origin: "https://evil.example.com" },
+  });
+
+  assert.equal(resolveTrustedRedirectOrigin(request), "https://app.example.com");
+});
+
+test("production rejects insecure callback configuration", () => {
+  const name: string = "NODE_ENV";
+  process.env[name] = "production";
+  assert.deepEqual(getIntegrationProviderConfigStatus("gmail"), {
+    configured: false,
+    missingConfig: ["GOOGLE_OAUTH_REDIRECT_URI"],
+  });
 });
 
 test("providers request only read-only Google scopes", () => {

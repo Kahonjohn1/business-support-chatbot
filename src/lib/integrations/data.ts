@@ -7,8 +7,13 @@ import {
   type UserRole,
 } from "@/lib/permissions";
 import { getIntegrationProviderConfigStatus } from "@/lib/integrations/config";
-import { encryptIntegrationSecret } from "@/lib/integrations/credentials";
+import {
+  decryptIntegrationSecret,
+  encryptIntegrationSecret,
+  type IntegrationCredentialBinding,
+} from "@/lib/integrations/credentials";
 import { IntegrationError } from "@/lib/integrations/errors";
+import { revokeGoogleAccessToken } from "@/lib/integrations/oauth";
 import { getIntegrationProvider, INTEGRATION_PROVIDERS } from "@/lib/integrations/providers";
 import {
   getIntegrationRepository,
@@ -128,6 +133,19 @@ export function toIntegrationFilter(context: IntegrationContext): IntegrationCon
     userId: context.userId,
     scope: context.scope,
     workspaceId: context.workspaceId,
+  };
+}
+
+export function toConnectionCredentialBinding(input: {
+  readonly provider: IntegrationProviderId;
+  readonly ownerUserId: string;
+  readonly workspaceId: string | null;
+}): IntegrationCredentialBinding {
+  return {
+    purpose: "connection",
+    provider: input.provider,
+    ownerUserId: input.ownerUserId,
+    workspaceId: input.workspaceId ?? null,
   };
 }
 
@@ -255,6 +273,11 @@ export async function saveIntegrationTokens(
     auth,
     INTEGRATION_PERMISSION_TOOL_NAMES.connect
   );
+  const binding = toConnectionCredentialBinding({
+    provider,
+    ownerUserId: context.userId,
+    workspaceId: context.workspaceId,
+  });
   const record = await getIntegrationRepository().upsertConnection({
     userId: context.userId,
     scope: context.scope,
@@ -263,9 +286,9 @@ export async function saveIntegrationTokens(
     status: "connected",
     accountLabel: tokens.accountLabel,
     grantedScopes: tokens.scopes,
-    encryptedAccessToken: encryptIntegrationSecret(tokens.accessToken),
+    encryptedAccessToken: encryptIntegrationSecret(tokens.accessToken, binding),
     encryptedRefreshToken: tokens.refreshToken
-      ? encryptIntegrationSecret(tokens.refreshToken)
+      ? encryptIntegrationSecret(tokens.refreshToken, binding)
       : null,
     tokenExpiresAt: tokens.expiresAt,
   });
@@ -316,10 +339,35 @@ export async function disconnectIntegration(
   const repository = getIntegrationRepository();
   const connection = await repository.findConnection(toIntegrationFilter(context), provider);
   if (!connection) return;
+
+  const binding = toConnectionCredentialBinding({
+    provider: connection.provider,
+    ownerUserId: connection.ownerUserId,
+    workspaceId: connection.workspaceId,
+  });
+  let revoked = false;
+  try {
+    const tokens = [
+      decryptIntegrationSecret(connection.encryptedAccessToken, binding),
+      connection.encryptedRefreshToken
+        ? decryptIntegrationSecret(connection.encryptedRefreshToken, binding)
+        : null,
+    ].filter((token): token is string => Boolean(token));
+    for (const token of tokens) {
+      if (await revokeGoogleAccessToken(token)) revoked = true;
+    }
+  } catch {}
+
   await repository.deleteConnection(toIntegrationFilter(context), connection.id);
   await recordIntegrationAudit(context, {
     provider,
     action: "connection.disconnected",
     outcome: "success",
+  });
+  await recordIntegrationAudit(context, {
+    provider,
+    action: "connection.revoked",
+    outcome: revoked ? "success" : "failure",
+    details: { remote: revoked },
   });
 }

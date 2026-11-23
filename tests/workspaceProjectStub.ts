@@ -354,11 +354,18 @@ function scopeWorkspaceId(scope: WorkspaceProjectScope): string | null {
 export class FakeWorkspaceProjectRepository implements WorkspaceProjectRepository {
   readonly projects: WorkspaceProjectRecord[] = [];
   readonly tasks: WorkspaceTaskRecord[] = [];
+  readonly failures = new Set<keyof WorkspaceProjectRepository>();
   assigneeResolver?: (
     scope: WorkspaceProjectScope,
     assigneeId: string
   ) => Promise<{ readonly id: string; readonly label: string }>;
   createTaskCalls = 0;
+
+  private fail(method: keyof WorkspaceProjectRepository): void {
+    if (this.failures.has(method)) {
+      throw new Error("simulated database failure");
+    }
+  }
 
   seedProject(
     scope: WorkspaceProjectScope,
@@ -397,6 +404,7 @@ export class FakeWorkspaceProjectRepository implements WorkspaceProjectRepositor
     scope: WorkspaceProjectScope,
     query?: string
   ): Promise<readonly WorkspaceProjectRecord[]> {
+    this.fail("listProjects");
     const needle = query?.trim().toLowerCase() ?? "";
     return this.visibleProjects(scope).filter(
       (project) =>
@@ -408,6 +416,7 @@ export class FakeWorkspaceProjectRepository implements WorkspaceProjectRepositor
     scope: WorkspaceProjectScope,
     projectId: string
   ): Promise<WorkspaceProjectRecord | null> {
+    this.fail("getProjectById");
     return (
       this.visibleProjects(scope).find((project) => project.id === projectId) ??
       null
@@ -418,6 +427,7 @@ export class FakeWorkspaceProjectRepository implements WorkspaceProjectRepositor
     scope: WorkspaceProjectScope,
     projectName: string
   ): Promise<readonly WorkspaceProjectRecord[]> {
+    this.fail("getProjectsByName");
     return this.visibleProjects(scope).filter(
       (project) =>
         project.name.toLowerCase() === projectName.trim().toLowerCase()
@@ -428,6 +438,7 @@ export class FakeWorkspaceProjectRepository implements WorkspaceProjectRepositor
     scope: WorkspaceProjectScope,
     projectId: string
   ): Promise<readonly WorkspaceTaskRecord[]> {
+    this.fail("listTasks");
     if (scope.kind === "personal") {
       return this.tasks.filter(
         (task) =>
@@ -446,6 +457,7 @@ export class FakeWorkspaceProjectRepository implements WorkspaceProjectRepositor
     scope: WorkspaceProjectScope,
     input: CreateWorkspaceProjectInput
   ): Promise<WorkspaceProjectRecord> {
+    this.fail("createProject");
     const now = new Date().toISOString();
     const project: WorkspaceProjectRecord = {
       id: `project-${this.projects.length + 1}`,
@@ -466,6 +478,7 @@ export class FakeWorkspaceProjectRepository implements WorkspaceProjectRepositor
     scope: WorkspaceProjectScope,
     input: CreateWorkspaceTaskInput
   ): Promise<WorkspaceTaskRecord> {
+    this.fail("createTask");
     const parent = this.visibleProjects(scope).find(
       (project) => project.id === input.projectId
     );
@@ -499,6 +512,7 @@ export class FakeWorkspaceProjectRepository implements WorkspaceProjectRepositor
     projectId: string,
     input: UpdateWorkspaceProjectInput
   ): Promise<WorkspaceProjectRecord | null> {
+    this.fail("updateProject");
     const index = this.projects.findIndex(
       (project) =>
         project.id === projectId &&
@@ -529,6 +543,7 @@ export class FakeWorkspaceProjectRepository implements WorkspaceProjectRepositor
     taskId: string,
     input: UpdateWorkspaceTaskInput
   ): Promise<WorkspaceTaskRecord | null> {
+    this.fail("updateTask");
     const index = this.tasks.findIndex(
       (task) =>
         task.id === taskId &&

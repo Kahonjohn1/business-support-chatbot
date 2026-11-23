@@ -9,12 +9,10 @@ import {
   MAX_MESSAGES,
   MAX_TOTAL_CHARS,
   MAX_TOTAL_FILE_BYTES,
-  RATE_LIMIT_MAX,
-  RATE_LIMIT_WINDOW_MS,
 } from "@/lib/chatLimits";
 import { parseMultipartBody, type RawFile } from "@/lib/multipart";
 import { declaredBodyTooLarge, readBodyWithLimit } from "@/lib/requestBody";
-import { createRateLimiter } from "@/lib/rateLimit";
+import { enforceRateLimit, RATE_LIMIT_POLICIES } from "@/lib/requestRateLimit";
 import { prepareFile, type PreparedFile } from "@/lib/fileProcessing";
 import {
   GroqAttachmentError,
@@ -49,39 +47,6 @@ function oversizedResponse(): Response {
     { error: "The request is too large." },
     { status: 413, headers: { Connection: "close" } }
   );
-}
-
-function readEnvInt(name: string, fallback: number): number {
-  const value = Number(process.env[name]);
-  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
-}
-
-// Best-effort, process-local limiter. See src/lib/rateLimit.ts for the important
-// caveat: this is not distributed protection, only a single-instance safeguard.
-const rateLimiter = createRateLimiter({
-  limit: readEnvInt("RATE_LIMIT_MAX", RATE_LIMIT_MAX),
-  windowMs: readEnvInt("RATE_LIMIT_WINDOW_MS", RATE_LIMIT_WINDOW_MS),
-});
-
-// Client IP headers (x-forwarded-for / x-real-ip) are supplied by the caller
-// unless a proxy rewrites them, so a directly exposed client can spoof them.
-// Trust them only when the deployment explicitly opts in (TRUST_PROXY), e.g.
-// when running behind a managed platform load balancer we control.
-const TRUST_PROXY = /^(1|true|yes)$/i.test(
-  process.env.TRUST_PROXY?.trim() ?? ""
-);
-
-function getClientKey(request: Request): string {
-  if (TRUST_PROXY) {
-    const forwarded = request.headers.get("x-forwarded-for");
-    const first = forwarded?.split(",")[0]?.trim();
-    if (first) return first;
-    const realIp = request.headers.get("x-real-ip")?.trim();
-    if (realIp) return realIp;
-  }
-  // No reliable per-client identity: fall back to a single shared bucket. This
-  // is not spoofable, but it limits the whole instance together.
-  return "global";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -170,18 +135,14 @@ export async function POST(request: Request): Promise<Response> {
     return apiErrorFromException(error);
   }
 
+  const limited = await enforceRateLimit(request, RATE_LIMIT_POLICIES.chat, {
+    userId: authContext.userId,
+    workspaceId: authContext.workspaceId ?? null,
+  });
+  if (limited) return limited;
+
   const tReq0 = Date.now();
   const reqId = "api" + Math.random().toString(36).slice(2,8);
-  const rate = rateLimiter.check(getClientKey(request));
-  if (!rate.allowed) {
-    return Response.json(
-      { error: "Too many requests. Please wait a moment and try again." },
-      {
-        status: 429,
-        headers: { "Retry-After": String(rate.retryAfterSeconds) },
-      }
-    );
-  }
 
   // Reject an oversized body early when the header declares one.
   if (

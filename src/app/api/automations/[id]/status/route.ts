@@ -2,6 +2,7 @@ import { automationApiError } from "@/lib/automation/api";
 import { setAutomationWorkflowStatus } from "@/lib/automation/engine";
 import type { AutomationWorkflowStatus } from "@/lib/automation/types";
 import { getActiveProjectManagementAuth } from "@/lib/workspace/projectManagementAuth";
+import { enforceRateLimit, RATE_LIMIT_POLICIES } from "@/lib/requestRateLimit";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -14,6 +15,11 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   } catch (error) {
     return automationApiError(error);
   }
+  const limited = await enforceRateLimit(request, RATE_LIMIT_POLICIES.automation, {
+    userId: auth.userId,
+    workspaceId: auth.workspaceId ?? null,
+  });
+  if (limited) return limited;
   try {
     const { id } = await context.params;
     const body = await request.json().catch(() => null);

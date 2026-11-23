@@ -34,6 +34,8 @@ GOOGLE_OAUTH_CLIENT_ID=
 GOOGLE_OAUTH_CLIENT_SECRET=
 GOOGLE_OAUTH_REDIRECT_URI=http://localhost:3000/api/integrations/callback
 INTEGRATION_TOKEN_ENCRYPTION_KEY=
+INTEGRATION_TOKEN_ENCRYPTION_KEY_PREVIOUS=
+INTEGRATION_APP_ORIGINS=http://localhost:3000
 ```
 
 Generate the encryption key with:
@@ -54,17 +56,19 @@ Providers remain disabled in the UI until all required environment variables are
 ## Connection model
 
 - A personal connection is owned by the signed-in user and is only visible to that user.
-- A business workspace connection is scoped to the active verified business workspace and visible to active members.
-- Connect and disconnect require an operator or admin role.
-- Viewer roles can use read-only integration tools but cannot manage connections.
-- Rotating `INTEGRATION_TOKEN_ENCRYPTION_KEY` makes existing stored tokens unreadable; reconnect the integrations after rotation.
+- A business workspace connection is also owned by the individual member who completed OAuth. The workspace ID supplies membership context but does not make the connection shared property.
+- A member can read, refresh, and disconnect only the connection they own. Other members' connections are invisible to reads, refreshes, tool execution, and deletes.
+- Connect and disconnect require an operator or admin role. Viewer roles can use read-only integration tools with their own connection.
+- Credentials are encrypted as `v2` envelopes with AES-256-GCM and authenticated additional data bound to purpose, provider, owner, and workspace. A credential from one connection cannot be replayed against another.
+- During key rotation, set `INTEGRATION_TOKEN_ENCRYPTION_KEY_PREVIOUS` to the old key and `INTEGRATION_TOKEN_ENCRYPTION_KEY` to the new key. Existing credentials are decrypted with either key and re-encrypted under the current key when read or refreshed. Remove the previous key after all connections have been touched.
 
 ## OAuth flow
 
-- `POST /api/integrations/{provider}/connect` checks permissions and configuration, creates PKCE and encrypted state, and returns the Google authorization URL.
-- State is bound to provider, user, scope, workspace, and a ten-minute expiry.
+- `POST /api/integrations/{provider}/connect` checks permissions and configuration, creates PKCE and encrypted state, stores it in a per-flow cookie, and returns the Google authorization URL.
+- State is bound to provider, user, scope, workspace, and a ten-minute expiry. Concurrent flows do not overwrite each other because each state has its own cookie.
+- Redirects are built from a canonical origin allowlist (`INTEGRATION_APP_ORIGINS`, with the configured callback origin included). Production requires HTTPS; the incoming Host header is never trusted on its own.
 - `GET /api/integrations/callback` verifies state, exchanges the code server-side, checks granted scopes, encrypts tokens, and stores the connection.
-- `POST /api/integrations/{provider}/disconnect` removes the stored connection.
+- `POST /api/integrations/{provider}/disconnect` attempts provider-side token revocation, records the outcome in the audit log, and removes the stored connection locally even if revocation fails.
 
 Access tokens are refreshed server-side. If refresh or decryption fails, the connection is marked `reconnect_required` rather than exposing an error to the model.
 

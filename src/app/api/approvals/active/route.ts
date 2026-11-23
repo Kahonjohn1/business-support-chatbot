@@ -1,5 +1,6 @@
 import { handleApprovalDecision } from "@/lib/approvalDecision";
 import { apiErrorFromException } from "@/lib/http/api";
+import { enforceRateLimit, RATE_LIMIT_POLICIES } from "@/lib/requestRateLimit";
 import { getActiveProjectManagementAuth } from "@/lib/workspace/projectManagementAuth";
 import type { AuthorizationContext } from "@/lib/permissions";
 import {
@@ -36,6 +37,11 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     return apiErrorFromException(error);
   }
+  const limited = await enforceRateLimit(request, RATE_LIMIT_POLICIES.approval, {
+    userId: authContext.userId,
+    workspaceId: authContext.workspaceId ?? null,
+  });
+  if (limited) return limited;
   return handleActiveApprovalPost(request, authContext);
 }
 

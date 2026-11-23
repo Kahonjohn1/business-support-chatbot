@@ -1,4 +1,5 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
+import { enforceRateLimit, RATE_LIMIT_POLICIES } from "@/lib/requestRateLimit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -13,6 +14,10 @@ export async function GET(request: NextRequest) {
   const tokenHash = request.nextUrl.searchParams.get("token_hash");
   const otpType = request.nextUrl.searchParams.get("type");
   const next = safeNextPath(request.nextUrl.searchParams.get("next"), "/");
+  const limited = await enforceRateLimit(request, RATE_LIMIT_POLICIES.auth, {
+    token: tokenHash,
+  });
+  if (limited) return limited;
   const supabase = await createSupabaseServerClient();
 
   if (!tokenHash || !otpType) {

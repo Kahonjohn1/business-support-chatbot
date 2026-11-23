@@ -1,13 +1,16 @@
 import "server-only";
 
 import {
+  credentialNeedsRewrap,
   decryptIntegrationSecret,
   encryptIntegrationSecret,
+  rewrapIntegrationSecret,
 } from "@/lib/integrations/credentials";
 import {
   findIntegrationConnection,
   recordIntegrationAudit,
   sanitizeIntegrationDetails,
+  toConnectionCredentialBinding,
   toIntegrationFilter,
   type IntegrationContext,
 } from "@/lib/integrations/data";
@@ -77,10 +80,40 @@ export async function getProviderAccessToken(
     );
   }
 
+  const binding = toConnectionCredentialBinding({
+    provider: connection.provider,
+    ownerUserId: connection.ownerUserId,
+    workspaceId: connection.workspaceId,
+  });
   let encryptedAccessToken = connection.encryptedAccessToken;
   let encryptedRefreshToken = connection.encryptedRefreshToken;
   let tokenExpiresAt = connection.tokenExpiresAt;
   let grantedScopes = connection.grantedScopes;
+
+  try {
+    if (credentialNeedsRewrap(encryptedAccessToken)) {
+      encryptedAccessToken = rewrapIntegrationSecret(encryptedAccessToken, binding);
+    }
+    if (
+      encryptedRefreshToken &&
+      credentialNeedsRewrap(encryptedRefreshToken)
+    ) {
+      encryptedRefreshToken = rewrapIntegrationSecret(encryptedRefreshToken, binding);
+    }
+    if (
+      encryptedAccessToken !== connection.encryptedAccessToken ||
+      encryptedRefreshToken !== connection.encryptedRefreshToken
+    ) {
+      await getIntegrationRepository().updateTokens(
+        toIntegrationFilter(context),
+        connection.id,
+        encryptedAccessToken,
+        encryptedRefreshToken,
+        tokenExpiresAt,
+        grantedScopes
+      );
+    }
+  } catch {}
 
   if (isExpired(tokenExpiresAt)) {
     if (!encryptedRefreshToken) {
@@ -94,7 +127,7 @@ export async function getProviderAccessToken(
 
     let refreshToken: string;
     try {
-      refreshToken = decryptIntegrationSecret(encryptedRefreshToken);
+      refreshToken = decryptIntegrationSecret(encryptedRefreshToken, binding);
     } catch {
       await markReconnectRequired(context, connection, "Refresh token could not be read.");
       throw new IntegrationError(
@@ -106,9 +139,9 @@ export async function getProviderAccessToken(
 
     try {
       const refreshed = await refreshGoogleAccessToken(refreshToken);
-      encryptedAccessToken = encryptIntegrationSecret(refreshed.accessToken);
+      encryptedAccessToken = encryptIntegrationSecret(refreshed.accessToken, binding);
       encryptedRefreshToken = refreshed.refreshToken
-        ? encryptIntegrationSecret(refreshed.refreshToken)
+        ? encryptIntegrationSecret(refreshed.refreshToken, binding)
         : encryptedRefreshToken;
       tokenExpiresAt = refreshed.expiresAt;
       grantedScopes = refreshed.scopes.length > 0 ? refreshed.scopes : grantedScopes;
@@ -132,7 +165,7 @@ export async function getProviderAccessToken(
 
   try {
     return {
-      token: decryptIntegrationSecret(encryptedAccessToken),
+      token: decryptIntegrationSecret(encryptedAccessToken, binding),
       context,
       connection: {
         ...connection,

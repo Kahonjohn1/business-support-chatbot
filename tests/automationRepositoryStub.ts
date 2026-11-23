@@ -181,9 +181,21 @@ export class FakeAutomationRepository implements AutomationRepository {
   async failExecution(
     filter: AutomationScopeFilter,
     executionId: string,
-    error: string
+    error: string,
+    result?: AutomationExecutionResult | null
   ) {
     this.setExecutionStatus(filter, executionId, "failed", error);
+    if (result) {
+      const execution = this.executions.find(
+        (item) => matches(item, filter) && item.id === executionId
+      );
+      if (execution) {
+        this.executions[this.executions.indexOf(execution)] = {
+          ...execution,
+          result,
+        };
+      }
+    }
   }
 
   async skipExecution(

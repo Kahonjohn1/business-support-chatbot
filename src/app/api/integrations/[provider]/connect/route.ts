@@ -2,7 +2,6 @@ import { cookies } from "next/headers";
 
 import { getIntegrationProviderConfigStatus } from "@/lib/integrations/config";
 import {
-  INTEGRATION_OAUTH_COOKIE,
   INTEGRATION_OAUTH_MAX_AGE_SECONDS,
   buildGoogleAuthorizationUrl,
   createIntegrationOAuthState,
@@ -13,12 +12,13 @@ import { integrationApiError, integrationPermissionError } from "@/lib/integrati
 import { resolveIntegrationContext } from "@/lib/integrations/data";
 import { INTEGRATION_PERMISSION_TOOL_NAMES } from "@/lib/permissions";
 import { getActiveProjectManagementAuth } from "@/lib/workspace/projectManagementAuth";
+import { enforceRateLimit, RATE_LIMIT_POLICIES } from "@/lib/requestRateLimit";
 
 interface RouteContext {
   readonly params: Promise<{ provider: string }>;
 }
 
-export async function POST(_request: Request, context: RouteContext): Promise<Response> {
+export async function POST(request: Request, context: RouteContext): Promise<Response> {
   try {
     const { provider: providerParam } = await context.params;
     if (!isIntegrationProviderId(providerParam)) {
@@ -31,6 +31,12 @@ export async function POST(_request: Request, context: RouteContext): Promise<Re
       auth
     );
     if (permissionError) return permissionError;
+
+    const limited = await enforceRateLimit(request, RATE_LIMIT_POLICIES.integration, {
+      userId: auth.userId,
+      workspaceId: auth.workspaceId ?? null,
+    });
+    if (limited) return limited;
 
     const configStatus = getIntegrationProviderConfigStatus(providerParam);
     if (!configStatus.configured) {
@@ -62,7 +68,7 @@ export async function POST(_request: Request, context: RouteContext): Promise<Re
     );
 
     const cookieStore = await cookies();
-    cookieStore.set(INTEGRATION_OAUTH_COOKIE, oauthState.cookieValue, {
+    cookieStore.set(oauthState.cookieName, oauthState.cookieValue, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
