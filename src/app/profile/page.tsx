@@ -1,18 +1,26 @@
 import { AppShell } from "@/components/workspace/AppShell";
 import { ProfileForm } from "@/components/workspace/ProfileForm";
-import { getConversationList, requireUserPage } from "@/lib/workspace/server";
+import {
+  getConversationList,
+  requireUserPage,
+} from "@/lib/workspace/server";
+import { getActiveWorkspaceSelection, toWorkspaceSwitcherView } from "@/lib/workspace/workspaceSelection";
 
 export const instant = false;
 
 export default async function ProfilePage() {
   const context = await requireUserPage("/profile");
-  const conversations = await getConversationList(context);
+  const [conversations, selection] = await Promise.all([
+    getConversationList(context),
+    getActiveWorkspaceSelection(context),
+  ]);
 
   return (
     <AppShell
       context={context}
       conversations={conversations}
       currentConversationId={null}
+      workspace={toWorkspaceSwitcherView(selection)}
     >
       <div className="w-full max-w-3xl">
         <h1 className="text-2xl font-semibold text-foreground">Your profile</h1>

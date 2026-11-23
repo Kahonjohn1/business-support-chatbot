@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { recordAuditEvent } from "@/lib/auditLog";
+import type { WorkspaceKind } from "@/lib/permissions";
 
 /**
  * Server-side approval management for sensitive/protected business operations.
@@ -30,6 +31,12 @@ export interface ApprovalRequest {
   readonly rawArguments: string;
   readonly summary: string;
   readonly details: Readonly<Record<string, unknown>>;
+  /** Server-only owner binding. Never included in model-facing details. */
+  readonly userId?: string;
+  /** Server-only resource binding, for example an owned project id. */
+  readonly resourceId?: string;
+  readonly workspaceId?: string;
+  readonly workspaceKind?: WorkspaceKind;
   status: ApprovalStatus;
   readonly createdAt: number;
   readonly expiresAt: number;
@@ -68,6 +75,10 @@ export function createApprovalRequest(params: {
   summary: string;
   details: Record<string, unknown>;
   ttlMs?: number;
+  userId?: string;
+  resourceId?: string;
+  workspaceId?: string;
+  workspaceKind?: WorkspaceKind;
 }): ApprovalRequest {
   const now = Date.now();
   let id = generateApprovalId();
@@ -83,6 +94,10 @@ export function createApprovalRequest(params: {
     rawArguments: params.rawArguments,
     summary: params.summary,
     details: Object.freeze({ ...params.details }),
+    ...(params.userId ? { userId: params.userId } : {}),
+    ...(params.resourceId ? { resourceId: params.resourceId } : {}),
+    ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),
+    ...(params.workspaceKind ? { workspaceKind: params.workspaceKind } : {}),
     status: "pending",
     createdAt: now,
     expiresAt: now + ttl,

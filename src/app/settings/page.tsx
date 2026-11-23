@@ -4,12 +4,16 @@ import {
   getConversationList,
   requireEmployeePage,
 } from "@/lib/workspace/server";
+import { getActiveWorkspaceSelection, toWorkspaceSwitcherView } from "@/lib/workspace/workspaceSelection";
 
 export const instant = false;
 
 export default async function SettingsPage() {
   const context = await requireEmployeePage("/settings");
-  const conversations = await getConversationList(context);
+  const [conversations, selection] = await Promise.all([
+    getConversationList(context),
+    getActiveWorkspaceSelection(context),
+  ]);
   const activeCompany = context.activeCompany;
 
   if (!activeCompany) return null;
@@ -19,6 +23,7 @@ export default async function SettingsPage() {
       context={context}
       conversations={conversations}
       currentConversationId={null}
+      workspace={toWorkspaceSwitcherView(selection)}
     >
       <div className="w-full max-w-4xl">
         <h1 className="text-2xl font-semibold text-foreground">

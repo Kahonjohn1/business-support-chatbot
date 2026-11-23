@@ -452,7 +452,7 @@ export async function generateAssistantReply(
               assistantMessage,
             };
           },
-          executeTool: (name, rawArguments, context) =>
+          executeTool: async (name, rawArguments, context) =>
             executeRegisteredTool(name, rawArguments, context),
           createToolMessage: (toolMessage) => ({
             role: "tool",

@@ -74,11 +74,51 @@ test("risky troubleshooting is handled cautiously", () => {
   assert.match(SUPPORT_SYSTEM_INSTRUCTION, /disabling security protections/i);
 });
 
-// 8. Out-of-scope requests are redirected appropriately.
-test("out-of-scope requests are redirected", () => {
-  assert.match(SUPPORT_SYSTEM_INSTRUCTION, /outside your scope/i);
-  assert.match(SUPPORT_SYSTEM_INSTRUCTION, /redirect/i);
-  assert.match(SUPPORT_SYSTEM_INSTRUCTION, /general-purpose/i);
+// General-purpose assistance and business strategy are supported.
+test("general-purpose and business strategy requests are supported", () => {
+  assert.match(SUPPORT_SYSTEM_INSTRUCTION, /general-purpose personal assistant/i);
+  assert.match(SUPPORT_SYSTEM_INSTRUCTION, /business strategy/i);
+  assert.match(SUPPORT_SYSTEM_INSTRUCTION, /problem-solving/i);
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /Do not refuse a request merely because it is unrelated to Marque Technologies/i
+  );
+});
+
+// Refusal and redirection are limited to genuine constraints.
+test("refusal and redirection are limited to genuine constraints", () => {
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /refuse or redirect only for genuine safety, authorization, or capability limitations/i
+  );
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /company-specific confirmation is genuinely required/i
+  );
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /application tool instructions and approval requirements/i
+  );
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /recommend a qualified professional when professional advice is needed/i
+  );
+});
+
+// Marque-specific answers stay grounded in verified company knowledge.
+test("Marque-specific answers stay grounded in verified company knowledge", () => {
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /Marque Technologies company and service support, based only on verified information/i
+  );
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /follow the verified-company-knowledge rules above/i
+  );
+  assert.match(
+    SUPPORT_SYSTEM_INSTRUCTION,
+    /Never invent company services, capabilities, pricing, policies, or contact details/i
+  );
 });
 
 // 9. Existing cancellation and provider-error handling still works.

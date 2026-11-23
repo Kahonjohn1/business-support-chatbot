@@ -99,7 +99,7 @@ export interface ToolLoopOptions<TMessage extends { role: string }> {
     toolName: string,
     rawArguments: string,
     context?: ToolExecutionContext
-  ) => ToolExecutionResult;
+  ) => ToolExecutionResult | Promise<ToolExecutionResult>;
   createToolMessage: (message: ToolMessage) => TMessage;
   maxIterations?: number;
   maxToolCalls?: number;
@@ -250,7 +250,7 @@ export async function runToolLoop<TMessage extends { role: string }>(
       totalToolCalls++;
       let result: ToolExecutionResult;
       try {
-        result = options.executeTool(
+        result = await options.executeTool(
           toolCall.function.name,
           toolCall.function.arguments,
           {

@@ -7,6 +7,7 @@ import {
   getConversationList,
   requireUserPage,
 } from "@/lib/workspace/server";
+import { getActiveWorkspaceSelection, toWorkspaceSwitcherView } from "@/lib/workspace/workspaceSelection";
 import { isUuid } from "@/lib/validation/uuid";
 
 export const instant = false;
@@ -21,9 +22,10 @@ export default async function ConversationPage({
   if (!isUuid(id)) notFound();
 
   const context = await requireUserPage(`/c/${id}`);
-  const [detail, conversations] = await Promise.all([
+  const [detail, conversations, selection] = await Promise.all([
     getConversationDetail(context, id),
     getConversationList(context),
+    getActiveWorkspaceSelection(context),
   ]);
   if (detail.status === "not-found") notFound();
 
@@ -32,6 +34,7 @@ export default async function ConversationPage({
       context={context}
       conversations={conversations}
       currentConversationId={id}
+      workspace={toWorkspaceSwitcherView(selection)}
     >
       <BusinessSupportChat
         key={id}

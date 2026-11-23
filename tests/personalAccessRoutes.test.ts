@@ -37,14 +37,22 @@ test("personal conversation routes filter and verify server-side ownership", () 
   assert.doesNotMatch(messages, /company_id/);
 });
 
-test("chat uses a user authorization context and keeps approvals employee-only", () => {
+test("chat uses a user authorization context and keeps legacy approvals employee-only", () => {
   const chat = source("../src/app/api/chat/route.ts");
   const approvals = source("../src/app/api/approvals/route.ts");
+  const personalApprovals = source(
+    "../src/app/api/personal/approvals/route.ts"
+  );
+  const messageBubble = source("../src/components/chat/MessageBubble.tsx");
 
-  assert.match(chat, /requireUserAuthorizationContext\(\)/);
+  assert.match(chat, /requireAuthenticatedApi\(\)/);
+  assert.match(chat, /getActiveWorkspaceContext\(workspaceContext\)/);
   assert.match(chat, /auth: authContext/);
   assert.doesNotMatch(chat, /requireEmployeeAuthorizationContext/);
   assert.match(approvals, /requireEmployeeAuthorizationContext\(\)/);
+  assert.match(personalApprovals, /requireUserAuthorizationContext\(\)/);
+  assert.doesNotMatch(personalApprovals, /requireEmployeeAuthorizationContext/);
+  assert.match(messageBubble, /\/api\/approvals\/active/);
 });
 
 test("personal ownership migration keeps legacy rows and enforces user RLS", () => {
@@ -60,4 +68,24 @@ test("personal ownership migration keeps legacy rows and enforces user RLS", () 
   assert.match(migration, /using \(user_id = auth\.uid\(\)\)/);
   assert.match(migration, /create policy messages_update/);
   assert.match(migration, /create policy messages_delete/);
+});
+
+test("user-only migration removes company ownership and enforces scoped access", () => {
+  const migration = source(
+    "../supabase/migrations/20261119000200_user_only_projects_tasks_approvals.sql"
+  );
+
+  assert.match(migration, /add column if not exists user_id uuid references auth\.users\(id\)/);
+  assert.match(migration, /alter column user_id set not null/);
+  assert.match(migration, /foreign key \(user_id, project_id\)/);
+  assert.match(migration, /personal record ownership cannot be changed/);
+  assert.match(migration, /drop column if exists company_id/);
+  assert.match(migration, /legacy_company_projects_20261119/);
+  assert.match(migration, /legacy_company_tasks_20261119/);
+  assert.match(migration, /legacy_company_approvals_20261119/);
+  assert.match(migration, /create policy approvals_select/);
+  assert.match(migration, /create policy tasks_select/);
+  assert.match(migration, /user_id = auth\.uid\(\)/);
+  assert.doesNotMatch(migration, /has_active_company_membership/);
+  assert.doesNotMatch(migration, /has_company_role/);
 });

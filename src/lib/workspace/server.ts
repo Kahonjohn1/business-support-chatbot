@@ -16,6 +16,7 @@ import {
   canAccessPersonalConversation,
   getEmployeeAuthorization,
   getUserAuthorization,
+  requireSharedWorkspaceAuthorization,
 } from "@/lib/workspace/authorization";
 import { WorkspaceAccessError } from "@/lib/workspace/errors";
 import type {
@@ -255,6 +256,13 @@ export async function requireUserAuthorizationContext(): Promise<AuthorizationCo
     throw new WorkspaceAccessError(401, "Authentication required.");
   }
   return authorization;
+}
+
+export async function requireSharedWorkspaceAuthorizationContext(
+  workspaceId: string
+): Promise<AuthorizationContext> {
+  const context = await requireUserApi();
+  return requireSharedWorkspaceAuthorization(context, workspaceId);
 }
 
 export async function requireEmployeePage(nextPath?: string): Promise<WorkspaceContext> {

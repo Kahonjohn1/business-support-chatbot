@@ -1,6 +1,7 @@
 import type { MessageRole } from "@/types/chat";
 import { apiErrorFromException } from "@/lib/http/api";
-import { requireUserAuthorizationContext } from "@/lib/workspace/server";
+import { requireAuthenticatedApi } from "@/lib/workspace/server";
+import { getActiveWorkspaceContext } from "@/lib/workspace/workspaceSelection";
 import {
   MAX_ATTACHMENTS,
   MAX_BODY_BYTES,
@@ -163,7 +164,8 @@ function parseMessages(payload: unknown): MessagesResult {
 export async function POST(request: Request): Promise<Response> {
   let authContext;
   try {
-    authContext = await requireUserAuthorizationContext();
+    const workspaceContext = await requireAuthenticatedApi();
+    ({ auth: authContext } = await getActiveWorkspaceContext(workspaceContext));
   } catch (error) {
     return apiErrorFromException(error);
   }

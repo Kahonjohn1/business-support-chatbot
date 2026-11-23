@@ -43,6 +43,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
@@ -67,11 +68,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     }
   };
 
-  const [approvalStatus, setApprovalStatus] = useState<
+  const [localApprovalStatus, setLocalApprovalStatus] = useState<
     ChatMessage["approvalStatus"]
-  >(message.approvalStatus);
+  >(undefined);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
+  const decisionRequestRef = useRef(0);
+  const approvalStatus = localApprovalStatus ?? message.approvalStatus;
+
+  useEffect(
+    () => () => {
+      decisionRequestRef.current += 1;
+    },
+    []
+  );
   const pending =
     Boolean(message.pendingApproval) &&
     (!approvalStatus || approvalStatus === "pending");
@@ -83,11 +93,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const handleDecision = async (decision: "approve" | "reject") => {
     if (!message.pendingApproval || isSubmittingDecision) return;
 
+    const requestId = decisionRequestRef.current + 1;
+    decisionRequestRef.current = requestId;
     setIsSubmittingDecision(true);
     setApprovalError(null);
 
     try {
-      const resp = await fetch("/api/approvals", {
+      const resp = await fetch("/api/approvals/active", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -101,7 +113,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         result = await resp.json();
       } catch {}
 
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || decisionRequestRef.current !== requestId) return;
 
       if (!resp.ok) {
         const messageText =
@@ -110,7 +122,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             : "The approval decision could not be processed. Please try again.";
 
         if (isRecord(result) && result.status === "failed") {
-          setApprovalStatus("failed");
+          setLocalApprovalStatus("failed");
           setApprovalError(messageText);
           onApprovalResolved?.(message.id, {
             status: "failed",
@@ -124,21 +136,36 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         return;
       }
 
+      const serverStatus =
+        isRecord(result) && typeof result.status === "string"
+          ? result.status
+          : null;
+      const confirmed =
+        decision === "approve"
+          ? serverStatus === "executed"
+          : serverStatus === "rejected";
+      if (!confirmed) {
+        setApprovalError(
+          "The approval decision could not be confirmed. Please try again."
+        );
+        return;
+      }
+
       const executedResult = isRecord(result) ? result.result : undefined;
-      setApprovalStatus(decision === "approve" ? "approved" : "rejected");
+      setLocalApprovalStatus(decision === "approve" ? "approved" : "rejected");
       onApprovalResolved?.(message.id, {
         status: decision === "approve" ? "executed" : "rejected",
         approvalId: message.pendingApproval.approvalId,
         result: executedResult,
       });
     } catch {
-      if (mountedRef.current) {
+      if (mountedRef.current && decisionRequestRef.current === requestId) {
         setApprovalError(
           "Could not reach the approval service. Please check your connection and try again."
         );
       }
     } finally {
-      if (mountedRef.current) {
+      if (mountedRef.current && decisionRequestRef.current === requestId) {
         setIsSubmittingDecision(false);
       }
     }

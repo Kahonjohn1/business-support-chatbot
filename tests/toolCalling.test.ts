@@ -238,6 +238,60 @@ test("the total tool-call cap prevents further execution", async () => {
   assert.match(toolResults[1].content ?? "", /limit was reached/i);
 });
 
+test("async tool executors are awaited before the tool message is created", async () => {
+  const requests: ToolModelRequest<TestMessage>[] = [];
+
+  const result = await runToolLoop<TestMessage>({
+    messages: [{ role: "user", content: "Check the project." }],
+    tools: [GET_PROJECT_STATUS_TOOL],
+    executeTool: async () => {
+      await Promise.resolve();
+      return {
+        ok: true,
+        content: JSON.stringify({ found: true, sampleData: false }),
+      };
+    },
+    createToolMessage: toolMessage,
+    callModel: async (request) => {
+      requests.push(request);
+      if (requests.length === 1) {
+        const toolCall = call(
+          "call_async",
+          GET_PROJECT_STATUS_TOOL_NAME,
+          JSON.stringify({ projectName: "Website Redesign" })
+        );
+        return {
+          content: null,
+          toolCalls: [toolCall],
+          assistantMessage: {
+            role: "assistant",
+            content: null,
+            tool_calls: [toolCall],
+          },
+        };
+      }
+      return {
+        content: "Website Redesign is active.",
+        toolCalls: [],
+        assistantMessage: {
+          role: "assistant",
+          content: "Website Redesign is active.",
+        },
+      };
+    },
+  });
+
+  const toolResults = requests[1].messages.filter(
+    (message) => message.role === "tool"
+  );
+  assert.equal(toolResults.length, 1);
+  assert.deepEqual(JSON.parse(toolResults[0].content ?? "{}"), {
+    found: true,
+    sampleData: false,
+  });
+  assert.equal(result.content, "Website Redesign is active.");
+});
+
 test("parseToolCalls rejects malformed provider responses", () => {
   assert.deepEqual(parseToolCalls(undefined), []);
   assert.deepEqual(parseToolCalls(null), []);
