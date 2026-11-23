@@ -4,9 +4,22 @@ import { readFileSync, readdirSync } from "node:fs";
 
 const MIGRATION_DIR = new URL("../supabase/migrations/", import.meta.url);
 const MIGRATION_NAME = "20261123000100_automation_engine.sql";
+const AUTHORIZATION_MIGRATION_NAME = "20261123000200_hardening_automation_authorization.sql";
 
 function migrationSource(): string {
   return readFileSync(new URL(MIGRATION_NAME, MIGRATION_DIR), "utf8");
+}
+
+function authorizationMigrationSource(): string {
+  return readFileSync(new URL(AUTHORIZATION_MIGRATION_NAME, MIGRATION_DIR), "utf8");
+}
+
+function functionSource(sql: string, name: string): string {
+  const start = sql.indexOf(`create or replace function public.${name}(`);
+  assert.ok(start >= 0, `${name} function is missing`);
+  const end = sql.indexOf("$$;", start);
+  assert.ok(end > start, `${name} function body is missing`);
+  return sql.slice(start, end);
 }
 
 test("automation migration runs after the integration migration", () => {
@@ -70,4 +83,75 @@ test("automation migration bounds actions, conditions, and retries", () => {
   assert.match(sql, /jsonb_array_length\(actions\) between 1 and 10/);
   assert.match(sql, /max_attempts between 1 and 3/);
   assert.match(sql, /retry_delay_seconds between 0 and 3600/);
+});
+
+test("authorization corrective migration runs after the automation engine migration", () => {
+  const migrations = readdirSync(MIGRATION_DIR)
+    .filter((name) => name.endsWith(".sql"))
+    .sort();
+  const engine = migrations.indexOf(MIGRATION_NAME);
+  const hardening = migrations.indexOf(AUTHORIZATION_MIGRATION_NAME);
+  assert.ok(engine >= 0);
+  assert.ok(hardening > engine);
+});
+
+test("cross-user personal execution access is denied by completion RPCs", () => {
+  const sql = authorizationMigrationSource();
+  for (const name of [
+    "complete_automation_execution",
+    "fail_automation_execution",
+    "skip_automation_execution",
+  ]) {
+    const body = functionSource(sql, name);
+    assert.match(body, /select e\.\* into v_execution/);
+    assert.match(body, /e\.scope = p_scope/);
+    assert.match(body, /e\.workspace_id is not distinct from p_workspace_id/);
+    assert.match(body, /v_execution\.scope = 'workspace'::public\.automation_scope/);
+    assert.match(body, /v_execution\.owner_user_id = v_user_id/);
+    assert.match(body, /if not v_allowed then\s+return;\s+end if;/);
+  }
+});
+
+test("unauthorized shared-workspace execution access is denied by completion RPCs", () => {
+  const sql = authorizationMigrationSource();
+  for (const name of [
+    "complete_automation_execution",
+    "fail_automation_execution",
+    "skip_automation_execution",
+  ]) {
+    const body = functionSource(sql, name);
+    assert.match(body, /select w\.\* into v_workflow/);
+    assert.match(body, /w\.scope = v_execution\.scope/);
+    assert.match(body, /w\.workspace_id is not distinct from v_execution\.workspace_id/);
+    assert.match(body, /w\.owner_user_id = v_execution\.owner_user_id/);
+    assert.match(
+      body,
+      /public\.automation_access_allowed\(\s*v_execution\.scope,\s*v_execution\.workspace_id,\s*v_user_id,\s*true\s*\)/
+    );
+  }
+});
+
+test("forged audit events cannot supply actor, scope, or workspace identity", () => {
+  const sql = authorizationMigrationSource();
+  const body = functionSource(sql, "record_automation_audit_event");
+  assert.match(body, /v_user_id uuid := auth\.uid\(\)/);
+  assert.match(body, /p_scope is distinct from v_workflow\.scope/);
+  assert.match(body, /not \(p_workspace_id is not distinct from v_workflow\.workspace_id\)/);
+  assert.match(
+    body,
+    /public\.automation_access_allowed\(\s*v_scope,\s*v_workspace_id,\s*v_user_id,\s*true\s*\)/
+  );
+  assert.match(
+    body,
+    /v_scope = 'workspace'::public\.automation_scope\s+or v_owner_user_id = v_user_id/
+  );
+  assert.match(
+    body,
+    /if not v_allowed then\s+raise exception 'Unauthorized automation audit event\.'/
+  );
+  const insertAt = body.indexOf("insert into public.automation_audit_events");
+  assert.ok(insertAt >= 0);
+  const insert = body.slice(insertAt);
+  assert.match(insert, /workflow_id, v_owner_user_id, v_scope, v_workspace_id, v_user_id/);
+  assert.doesNotMatch(insert, /p_actor_user_id/);
 });
