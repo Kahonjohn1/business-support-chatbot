@@ -86,7 +86,8 @@ export interface AutomationRepository {
   failExecution(
     filter: AutomationScopeFilter,
     executionId: string,
-    error: string
+    error: string,
+    result?: AutomationExecutionResult | null
   ): Promise<void>;
   skipExecution(
     filter: AutomationScopeFilter,
@@ -448,14 +449,15 @@ const supabaseAutomationRepository: AutomationRepository = {
     if (error) throw storageError("execution completion", error.message);
   },
 
-  async failExecution(rawFilter, executionId, message) {
+  async failExecution(rawFilter, executionId, message, result) {
     const filter = normalizeFilter(rawFilter);
     const supabase = await createClient();
-    const { error } = await supabase.rpc("fail_automation_execution", {
+    const { error } = await supabase.rpc("record_automation_execution_failure", {
       p_execution_id: executionId,
       p_scope: filter.scope,
       p_workspace_id: filter.workspaceId,
       p_error: message.slice(0, 500),
+      p_result: (result ?? null) as unknown as Record<string, unknown> | null,
     });
     if (error) throw storageError("execution failure recording", error.message);
   },

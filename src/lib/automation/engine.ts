@@ -50,7 +50,7 @@ function cleanString(value: unknown, max = 400): string {
   return value.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max);
 }
 
-function sanitizeContext(value: unknown): Record<string, unknown> {
+export function sanitizeContext(value: unknown): Record<string, unknown> {
   const sensitive = /key|token|secret|password|cookie|authorization/i;
   if (Array.isArray(value)) {
     return { items: value.slice(0, 20).map((item) => sanitizeContext(item)) };
@@ -78,42 +78,61 @@ function parseTime(time: string): { hour: number; minute: number } {
   return { hour: Number(hour), minute: Number(minute) };
 }
 
-function nextScheduleDate(trigger: AutomationTriggerConfig, now: Date): Date | null {
-  if (trigger.type !== "schedule" || !trigger.time) return null;
-  const { hour, minute } = parseTime(trigger.time);
-  const candidate = new Date(now);
+function daysInUtcMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+}
+
+function monthlySlot(
+  reference: Date,
+  targetDay: number,
+  hour: number,
+  minute: number
+): Date {
+  const year = reference.getUTCFullYear();
+  const month = reference.getUTCMonth();
+  const day = Math.min(targetDay, daysInUtcMonth(year, month));
+  return new Date(Date.UTC(year, month, day, hour, minute, 0, 0));
+}
+
+function nextSlotAfter(
+  trigger: AutomationTriggerConfig,
+  reference: Date
+): Date {
+  const { hour, minute } = parseTime(trigger.time ?? "00:00");
+  const candidate = new Date(reference);
   candidate.setUTCHours(hour, minute, 0, 0);
 
   if (trigger.interval === "daily") {
-    if (candidate <= now) candidate.setUTCDate(candidate.getUTCDate() + 1);
+    if (candidate <= reference) candidate.setUTCDate(candidate.getUTCDate() + 1);
     return candidate;
   }
   if (trigger.interval === "weekly") {
     const target = trigger.dayOfWeek ?? 1;
     const delta = (target - candidate.getUTCDay() + 7) % 7;
     candidate.setUTCDate(candidate.getUTCDate() + delta);
-    if (candidate <= now) candidate.setUTCDate(candidate.getUTCDate() + 7);
+    if (candidate <= reference) candidate.setUTCDate(candidate.getUTCDate() + 7);
     return candidate;
   }
   const targetDay = trigger.dayOfMonth ?? 1;
-  if (candidate.getUTCDate() !== targetDay) {
-    candidate.setUTCDate(1);
-    candidate.setUTCMonth(candidate.getUTCMonth() + 1);
-    candidate.setUTCDate(targetDay);
-  }
-  if (candidate <= now) {
-    candidate.setUTCDate(1);
-    candidate.setUTCMonth(candidate.getUTCMonth() + 1);
-    candidate.setUTCDate(targetDay);
-  }
-  return candidate;
+  const slot = monthlySlot(reference, targetDay, hour, minute);
+  if (slot > reference) return slot;
+  const nextMonth = new Date(
+    Date.UTC(reference.getUTCFullYear(), reference.getUTCMonth() + 1, 1)
+  );
+  return monthlySlot(nextMonth, targetDay, hour, minute);
 }
 
 export function computeNextRunAt(
   trigger: AutomationTriggerConfig,
-  now = new Date()
+  now = new Date(),
+  anchor?: string | null
 ): string | null {
-  return nextScheduleDate(trigger, now)?.toISOString() ?? null;
+  if (trigger.type !== "schedule" || !trigger.time) return null;
+  const anchorTime = anchor ? Date.parse(anchor) : Number.NaN;
+  const reference = Number.isFinite(anchorTime) ? new Date(anchorTime) : now;
+  let next = nextSlotAfter(trigger, reference);
+  if (next <= now) next = nextSlotAfter(trigger, now);
+  return next.toISOString();
 }
 
 function fieldValue(
@@ -170,7 +189,7 @@ function evaluateCondition(
   return false;
 }
 
-function matchesConditions(
+export function matchesConditions(
   conditions: readonly AutomationCondition[],
   context: Record<string, unknown>
 ): boolean {
@@ -241,7 +260,7 @@ function actionPermission(action: AutomationAction): string {
   return "list_project_tasks";
 }
 
-async function executeAction(
+export async function executeAction(
   action: AutomationAction,
   auth: AuthorizationContext,
   context: Record<string, unknown>,
@@ -350,6 +369,50 @@ async function audit(
   }
 }
 
+const OUTCOME_ACTIONS: readonly AutomationActionOutcome["action"][] = [
+  "create_task",
+  "status_check",
+  "summary",
+  "notify",
+  "task_reminder",
+];
+
+export function resumeOutcomesFromContext(
+  context: Readonly<Record<string, unknown>>
+): AutomationActionOutcome[] {
+  const value = context.completedOutcomes;
+  if (!Array.isArray(value)) return [];
+  const outcomes: AutomationActionOutcome[] = [];
+  for (const entry of value.slice(0, 10)) {
+    if (!isRecord(entry)) break;
+    if (
+      typeof entry.action !== "string" ||
+      !OUTCOME_ACTIONS.includes(entry.action as AutomationActionOutcome["action"]) ||
+      typeof entry.ok !== "boolean" ||
+      typeof entry.summary !== "string"
+    ) {
+      break;
+    }
+    outcomes.push({
+      action: entry.action as AutomationActionOutcome["action"],
+      ok: entry.ok,
+      summary: entry.summary.slice(0, 400),
+    });
+  }
+  return outcomes;
+}
+
+export function summaryFromOutcomes(
+  outcomes: readonly AutomationActionOutcome[]
+): string {
+  return outcomes
+    .filter((outcome) => outcome.ok)
+    .map((outcome) => outcome.summary)
+    .join(" ")
+    .trim()
+    .slice(0, 800);
+}
+
 async function runExecution(
   executionId: string,
   filter: AutomationScopeFilter,
@@ -387,11 +450,11 @@ async function runExecution(
     ) ?? claimed;
   }
 
-  const outcomes: AutomationActionOutcome[] = [];
-  let summary = "";
+  const outcomes: AutomationActionOutcome[] = resumeOutcomesFromContext(claimed.context);
+  let summary = summaryFromOutcomes(outcomes);
   try {
     const systemAuth = await authorizationForWorkflow(workflow);
-    for (const action of workflow.actions.slice(0, workflow.maxActions)) {
+    for (const action of workflow.actions.slice(outcomes.length, workflow.maxActions)) {
       const outcome = await executeAction(action, systemAuth, executionContext, summary);
       outcomes.push(outcome);
       if (outcome.ok) summary = `${summary} ${outcome.summary}`.trim().slice(0, 800);
@@ -401,13 +464,6 @@ async function runExecution(
       outcomes,
     };
     await repository.completeExecution(filter, executionId, result);
-    if (workflow.trigger.type === "schedule") {
-      await repository.setWorkflowNextRun(
-        filter,
-        workflow.id,
-        computeNextRunAt(workflow.trigger)
-      );
-    }
     await audit(context, "automation.execution.completed", "success", {
       workflowId: workflow.id,
       executionId,
@@ -415,7 +471,10 @@ async function runExecution(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Execution failed.";
-    await repository.failExecution(filter, executionId, message);
+    await repository.failExecution(filter, executionId, message, {
+      conditionMatched: true,
+      outcomes,
+    });
     await audit(context, "automation.execution.failed", "failure", {
       workflowId: workflow.id,
       executionId,
@@ -435,7 +494,11 @@ async function runExecution(
         triggerType: current.triggerType,
         eventType: current.eventType,
         idempotencyKey: retryKey,
-        context: { ...current.context, retryNumber: priorRetry + 1 },
+        context: {
+          ...current.context,
+          retryNumber: priorRetry + 1,
+          completedOutcomes: outcomes,
+        },
         scheduledFor: new Date(Date.now() + workflow.retryDelaySeconds * 1000).toISOString(),
         maxAttempts: current.maxAttempts,
       });
@@ -638,30 +701,34 @@ export async function processDueAutomations(
   for (const workflow of workflows) {
     if (workflow.status !== "enabled" || workflow.trigger.type !== "schedule") continue;
     if (!workflow.nextRunAt || Date.parse(workflow.nextRunAt) > now.getTime()) continue;
-    const scheduledFor = workflow.nextRunAt;
-    const created = await repository.createExecution(filter, {
-      workflowId: workflow.id,
-      triggerType: "schedule",
-      eventType: null,
-      idempotencyKey: `schedule:${workflow.id}:${scheduledFor}`,
-      context: {
-        event: {
-          type: "schedule",
-          occurredAt: scheduledFor,
-          payload: { resourceType: "workflow", id: workflow.id },
+    try {
+      const scheduledFor = workflow.nextRunAt;
+      const created = await repository.createExecution(filter, {
+        workflowId: workflow.id,
+        triggerType: "schedule",
+        eventType: null,
+        idempotencyKey: `schedule:${workflow.id}:${scheduledFor}`,
+        context: {
+          event: {
+            type: "schedule",
+            occurredAt: scheduledFor,
+            payload: { resourceType: "workflow", id: workflow.id },
+          },
         },
-      },
-      scheduledFor,
-      maxAttempts: workflow.maxAttempts,
-    });
-    if (created.created) {
-      results.push(await runExecution(created.execution.id, filter, context));
+        scheduledFor,
+        maxAttempts: workflow.maxAttempts,
+      });
+      await repository.setWorkflowNextRun(
+        filter,
+        workflow.id,
+        computeNextRunAt(workflow.trigger, now, scheduledFor)
+      );
+      if (created.created) {
+        results.push(await runExecution(created.execution.id, filter, context));
+      }
+    } catch {
+      continue;
     }
-    await repository.setWorkflowNextRun(
-      filter,
-      workflow.id,
-      computeNextRunAt(workflow.trigger, now)
-    );
   }
 
   const pending = await repository.listExecutions(filter, {
@@ -670,7 +737,11 @@ export async function processDueAutomations(
   });
   for (const execution of pending) {
     if (Date.parse(execution.scheduledFor) > now.getTime()) continue;
-    results.push(await runExecution(execution.id, filter, context));
+    try {
+      results.push(await runExecution(execution.id, filter, context));
+    } catch {
+      continue;
+    }
   }
   return results;
 }
