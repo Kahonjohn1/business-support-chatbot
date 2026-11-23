@@ -1,9 +1,9 @@
 import {
-  beginApprovalExecution,
-  createApprovalRequest,
-  getApprovalRequest,
-  markApprovalExecuted,
-  markApprovalFailed,
+  beginApprovalExecutionRecord,
+  completeApprovalExecutionRecord,
+  createApprovalRecord,
+  failApprovalExecutionRecord,
+  getApprovalRecord,
 } from "@/lib/approvalWorkflow";
 import {
   AUTOMATION_PERMISSION_TOOL_NAMES,
@@ -215,7 +215,7 @@ export async function executeListAutomationWorkflows(
 }
 
 function approvalBinding(
-  approval: NonNullable<ReturnType<typeof getApprovalRequest>>,
+  approval: NonNullable<Awaited<ReturnType<typeof getApprovalRecord>>>,
   input: {
     toolName: string;
     context: ToolExecutionContext;
@@ -274,7 +274,7 @@ export async function executePrepareAutomationWorkflow(
   });
 
   if (context.approvalId) {
-    const approval = getApprovalRequest(context.approvalId);
+    const approval = await getApprovalRecord(context.approvalId);
     if (!approval) return failure("EXECUTION_FAILED", "Approval request was not found.");
     if (approval.status === "executed" && isRecord(approval.executionResult)) {
       return { ok: true, data: approval.executionResult };
@@ -297,12 +297,12 @@ export async function executePrepareAutomationWorkflow(
     }
 
     try {
-      beginApprovalExecution(approval.id);
+      await beginApprovalExecutionRecord(approval.id);
       const approvedProposal: AutomationWorkflowProposal = proposeAutomationWorkflow(
         JSON.parse(approval.rawArguments)
       );
       if (!approvedProposal.ok) {
-        markApprovalFailed(approval.id, "The approved proposal is no longer valid.");
+        await failApprovalExecutionRecord(approval.id, "The approved proposal is no longer valid.");
         return failure("INVALID_ARGUMENTS", "The approved proposal is no longer valid.");
       }
       const workflow = await createAutomationWorkflow(
@@ -320,7 +320,7 @@ export async function executePrepareAutomationWorkflow(
         },
         explanation: approvedProposal.explanation,
       };
-      markApprovalExecuted(approval.id, result);
+      await completeApprovalExecutionRecord(approval.id, result);
       return { ok: true, data: result };
     } catch (error) {
       return failure(
@@ -337,7 +337,7 @@ export async function executePrepareAutomationWorkflow(
     });
   }
 
-  const approval = createApprovalRequest({
+  const approval = await createApprovalRecord({
     requestId: context.requestId,
     toolName: PREPARE_AUTOMATION_WORKFLOW_TOOL_NAME,
     rawArguments,

@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { WorkspaceKind } from "@/lib/permissions";
 
 /**
  * Audit logging service for tool execution, authorization decisions, and approvals.
@@ -44,6 +45,27 @@ export interface AuditEvent {
   readonly details?: Readonly<Record<string, unknown>>;
 }
 
+export interface AuditEventContext {
+  readonly workspaceId?: string;
+  readonly workspaceKind?: WorkspaceKind;
+}
+
+export type AuditEventWrite = Omit<AuditEvent, "id" | "timestamp"> & {
+  timestamp?: string;
+};
+
+export interface AuditLogFilter {
+  requestId?: string;
+  toolName?: string;
+  status?: AuditOperationStatus;
+  limit?: number;
+}
+
+export interface DurableAuditStore {
+  append(event: AuditEventWrite, context?: AuditEventContext): Promise<AuditEvent>;
+  list(filter?: AuditLogFilter): Promise<AuditEvent[]>;
+}
+
 const MAX_AUDIT_LOG_ENTRIES = 500;
 const inMemoryAuditLogs: AuditEvent[] = [];
 
@@ -77,12 +99,53 @@ function sanitizeDetails(
   return sanitized;
 }
 
+const memoryAuditStore: DurableAuditStore = {
+  append: async (event) => recordAuditEvent(event),
+  list: async (filter) => getAuditLogs(filter),
+};
+
+let activeAuditStore: DurableAuditStore | null = null;
+
+async function getAuditStore(): Promise<DurableAuditStore> {
+  if (activeAuditStore) return activeAuditStore;
+  const { supabaseAuditStore } = await import("@/lib/supabase/auditStore");
+  activeAuditStore = supabaseAuditStore;
+  return activeAuditStore;
+}
+
+export function setAuditStore(store: DurableAuditStore): void {
+  activeAuditStore = store;
+}
+
+export function selectMemoryAuditStore(): void {
+  activeAuditStore = memoryAuditStore;
+}
+
+export async function persistAuditEvent(
+  event: AuditEventWrite,
+  context?: AuditEventContext
+): Promise<AuditEvent> {
+  const store = await getAuditStore();
+  return store.append(
+    {
+      ...event,
+      ...(event.details ? { details: sanitizeDetails(event.details) } : {}),
+    },
+    context
+  );
+}
+
+export async function getDurableAuditLogs(
+  filter?: AuditLogFilter
+): Promise<AuditEvent[]> {
+  const store = await getAuditStore();
+  return store.list(filter);
+}
+
 /**
  * Records a structured audit event.
  */
-export function recordAuditEvent(
-  event: Omit<AuditEvent, "id" | "timestamp"> & { timestamp?: string }
-): AuditEvent {
+export function recordAuditEvent(event: AuditEventWrite): AuditEvent {
   const fullEvent: AuditEvent = {
     id: `audit_${randomBytes(12).toString("base64url")}`,
     timestamp: event.timestamp || new Date().toISOString(),
@@ -121,12 +184,7 @@ export function recordAuditEvent(
 /**
  * Retrieves audit log entries matching the query parameters.
  */
-export function getAuditLogs(filter?: {
-  requestId?: string;
-  toolName?: string;
-  status?: AuditOperationStatus;
-  limit?: number;
-}): AuditEvent[] {
+export function getAuditLogs(filter?: AuditLogFilter): AuditEvent[] {
   let entries = [...inMemoryAuditLogs];
 
   if (filter?.requestId) {
@@ -148,4 +206,5 @@ export function getAuditLogs(filter?: {
  */
 export function clearAuditLogs(): void {
   inMemoryAuditLogs.length = 0;
+  selectMemoryAuditStore();
 }

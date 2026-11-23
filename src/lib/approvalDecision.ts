@@ -1,8 +1,8 @@
 import {
-  getApprovalRequest,
-  markApprovalExecuted,
-  markApprovalFailed,
-  submitApprovalDecision,
+  completeApprovalExecutionRecord,
+  decideApprovalRecord,
+  failApprovalExecutionRecord,
+  getApprovalRecord,
 } from "@/lib/approvalWorkflow";
 import {
   checkPermission,
@@ -94,7 +94,7 @@ export async function handleApprovalDecision(
   }
 
   const normalizedId = approvalId.trim();
-  const approval = getApprovalRequest(normalizedId);
+  const approval = await getApprovalRecord(normalizedId);
   if (!approval) {
     return Response.json(
       {
@@ -168,7 +168,7 @@ export async function handleApprovalDecision(
     }
 
     try {
-      submitApprovalDecision(
+      await decideApprovalRecord(
         approval.id,
         "reject",
         options.requireOwnership ? authContext.userId : `user-${authContext.role}`
@@ -202,7 +202,7 @@ export async function handleApprovalDecision(
   }
 
   try {
-    submitApprovalDecision(
+    await decideApprovalRecord(
       approval.id,
       "approve",
       options.requireOwnership ? authContext.userId : `user-${authContext.role}`
@@ -222,7 +222,7 @@ export async function handleApprovalDecision(
     }
     originalArgs = parsed;
   } catch {
-    markApprovalFailed(approval.id, "The approved operation arguments are invalid.");
+    await failApprovalExecutionRecord(approval.id, "The approved operation arguments are invalid.");
     return failedResponse(
       approval.id,
       "The approved operation arguments are invalid."
@@ -243,31 +243,31 @@ export async function handleApprovalDecision(
     const message = executionResult.ok
       ? "The approved operation was not confirmed."
       : executionResult.error;
-    const afterFailure = getApprovalRequest(approval.id);
+    const afterFailure = await getApprovalRecord(approval.id);
     if (
       afterFailure &&
       (afterFailure.status === "approved" || afterFailure.status === "executing")
     ) {
       try {
-        markApprovalFailed(approval.id, message);
+        await failApprovalExecutionRecord(approval.id, message);
       } catch {}
     }
     return failedResponse(approval.id, message);
   }
 
-  const afterExecution = getApprovalRequest(approval.id);
+  const afterExecution = await getApprovalRecord(approval.id);
   if (afterExecution?.status !== "executed") {
     if (
       afterExecution &&
       (afterExecution.status === "approved" || afterExecution.status === "executing")
     ) {
       try {
-        markApprovalExecuted(approval.id, executionResult.data);
+        await completeApprovalExecutionRecord(approval.id, executionResult.data);
       } catch {}
     }
   }
 
-  const finalized = getApprovalRequest(approval.id);
+  const finalized = await getApprovalRecord(approval.id);
   if (
     finalized?.status !== "executed" ||
     !isExecutedData(finalized.executionResult)

@@ -53,6 +53,106 @@ const DEFAULT_APPROVAL_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const APPROVAL_TOKEN_BYTES = 32;
 const inMemoryApprovals = new Map<string, ApprovalRequest>();
 
+export interface ApprovalRecordCreateParams {
+  requestId: string;
+  toolName: string;
+  rawArguments: string;
+  summary: string;
+  details: Record<string, unknown>;
+  ttlMs?: number;
+  userId?: string;
+  resourceId?: string;
+  workspaceId?: string;
+  workspaceKind?: WorkspaceKind;
+}
+
+export interface ApprovalRecordStore {
+  create(params: ApprovalRecordCreateParams): Promise<ApprovalRequest>;
+  get(id: string): Promise<ApprovalRequest | undefined>;
+  decide(
+    id: string,
+    decision: "approve" | "reject",
+    decisionBy: string
+  ): Promise<ApprovalRequest>;
+  begin(id: string): Promise<ApprovalRequest>;
+  complete(id: string, executionResult?: unknown): Promise<ApprovalRequest>;
+  fail(id: string, reason: string): Promise<ApprovalRequest>;
+}
+
+const memoryApprovalRecordStore: ApprovalRecordStore = {
+  create: async (params) => createApprovalRequest(params),
+  get: async (id) => getApprovalRequest(id),
+  decide: async (id, decision, decisionBy) =>
+    submitApprovalDecision(id, decision, decisionBy),
+  begin: async (id) => beginApprovalExecution(id),
+  complete: async (id, executionResult) =>
+    markApprovalExecuted(id, executionResult),
+  fail: async (id, reason) => markApprovalFailed(id, reason),
+};
+
+let activeApprovalRecordStore: ApprovalRecordStore | null = null;
+
+async function getApprovalRecordStore(): Promise<ApprovalRecordStore> {
+  if (activeApprovalRecordStore) return activeApprovalRecordStore;
+  const { supabaseApprovalRecordStore } = await import(
+    "@/lib/supabase/approvalRecordStore"
+  );
+  activeApprovalRecordStore = supabaseApprovalRecordStore;
+  return activeApprovalRecordStore;
+}
+
+export function setApprovalRecordStore(store: ApprovalRecordStore): void {
+  activeApprovalRecordStore = store;
+}
+
+export function selectMemoryApprovalRecordStore(): void {
+  activeApprovalRecordStore = memoryApprovalRecordStore;
+}
+
+export async function createApprovalRecord(
+  params: ApprovalRecordCreateParams
+): Promise<ApprovalRequest> {
+  return getApprovalRecordStore().then((store) => store.create(params));
+}
+
+export async function getApprovalRecord(
+  id: string
+): Promise<ApprovalRequest | undefined> {
+  return getApprovalRecordStore().then((store) => store.get(id));
+}
+
+export async function decideApprovalRecord(
+  id: string,
+  decision: "approve" | "reject",
+  decisionBy: string
+): Promise<ApprovalRequest> {
+  return getApprovalRecordStore().then((store) =>
+    store.decide(id, decision, decisionBy)
+  );
+}
+
+export async function beginApprovalExecutionRecord(
+  id: string
+): Promise<ApprovalRequest> {
+  return getApprovalRecordStore().then((store) => store.begin(id));
+}
+
+export async function completeApprovalExecutionRecord(
+  id: string,
+  executionResult?: unknown
+): Promise<ApprovalRequest> {
+  return getApprovalRecordStore().then((store) =>
+    store.complete(id, executionResult)
+  );
+}
+
+export async function failApprovalExecutionRecord(
+  id: string,
+  reason: string
+): Promise<ApprovalRequest> {
+  return getApprovalRecordStore().then((store) => store.fail(id, reason));
+}
+
 function generateApprovalId(): string {
   return `appr_${randomBytes(APPROVAL_TOKEN_BYTES).toString("base64url")}`;
 }
@@ -321,4 +421,5 @@ export function markApprovalFailed(
  */
 export function clearApprovals(): void {
   inMemoryApprovals.clear();
+  selectMemoryApprovalRecordStore();
 }
