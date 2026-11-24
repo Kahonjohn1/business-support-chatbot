@@ -45,7 +45,7 @@ begin
   end if;
 
   if (
-    select array_agg(e.enumlabel order by e.enumsortorder)
+    select array_agg(e.enumlabel::text order by e.enumsortorder)
     from pg_enum e
     join pg_type t on t.oid = e.enumtypid
     join pg_namespace n on n.oid = t.typnamespace

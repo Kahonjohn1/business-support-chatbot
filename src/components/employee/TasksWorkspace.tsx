@@ -2,37 +2,30 @@
 
 import { useMemo, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
-import { tasks, type TaskPriority, type TaskStatus } from "@/lib/employee/mockData";
 import { AvatarWithName } from "./Avatar";
 import { StatusBadge } from "./StatusBadge";
+import {
+  taskPriorityLabels,
+  taskPriorityTone,
+  taskStatusLabels,
+  taskStatusTone,
+  type EmployeeTask,
+  type TaskPriority,
+  type TaskStatus,
+} from "@/lib/employee/operationalTypes";
 
-const statusFilters: Array<TaskStatus | "All"> = [
-  "All",
-  "Todo",
-  "In progress",
-  "In review",
-  "Blocked",
-  "Done",
-];
+const statusFilters: Array<TaskStatus | "All"> = ["All", "todo", "in_progress", "done"];
+const priorityFilters: Array<TaskPriority | "All"> = ["All", "high", "medium", "low"];
 
-const priorityFilters: Array<TaskPriority | "All"> = ["All", "Urgent", "High", "Medium", "Low"];
-
-function statusTone(status: TaskStatus) {
-  if (status === "Done") return "success" as const;
-  if (status === "Blocked") return "danger" as const;
-  if (status === "In review") return "violet" as const;
-  if (status === "In progress") return "info" as const;
-  return "neutral" as const;
+function statusName(value: TaskStatus | "All"): string {
+  return value === "All" ? "All" : taskStatusLabels[value];
 }
 
-function priorityTone(priority: TaskPriority) {
-  if (priority === "Urgent") return "danger" as const;
-  if (priority === "High") return "warning" as const;
-  if (priority === "Medium") return "info" as const;
-  return "neutral" as const;
+function priorityName(value: TaskPriority | "All"): string {
+  return value === "All" ? "All" : taskPriorityLabels[value];
 }
 
-export function TasksWorkspace() {
+export function TasksWorkspace({ tasks }: { tasks: EmployeeTask[] }) {
   const [status, setStatus] = useState<TaskStatus | "All">("All");
   const [priority, setPriority] = useState<TaskPriority | "All">("All");
 
@@ -43,7 +36,7 @@ export function TasksWorkspace() {
           (status === "All" || task.status === status) &&
           (priority === "All" || task.priority === priority)
       ),
-    [status, priority]
+    [tasks, status, priority]
   );
 
   return (
@@ -62,7 +55,7 @@ export function TasksWorkspace() {
                   : "border border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
-              {item}
+              {statusName(item)}
             </button>
           ))}
         </div>
@@ -78,7 +71,7 @@ export function TasksWorkspace() {
           >
             {priorityFilters.map((item) => (
               <option key={item} value={item}>
-                {item}
+                {priorityName(item)}
               </option>
             ))}
           </select>
@@ -93,7 +86,6 @@ export function TasksWorkspace() {
               <th className="px-3 py-2.5 font-semibold">Status</th>
               <th className="px-3 py-2.5 font-semibold">Priority</th>
               <th className="px-3 py-2.5 font-semibold">Assignee</th>
-              <th className="px-3 py-2.5 font-semibold">Due</th>
               <th className="px-3 py-2.5 font-semibold">Updated</th>
               <th className="px-3 py-2.5" />
             </tr>
@@ -107,15 +99,14 @@ export function TasksWorkspace() {
                   <p className="mt-0.5 text-[11px] text-muted-foreground">{task.project}</p>
                 </td>
                 <td className="px-3 py-3">
-                  <StatusBadge tone={statusTone(task.status)}>{task.status}</StatusBadge>
+                  <StatusBadge tone={taskStatusTone(task.status)}>{task.statusLabel}</StatusBadge>
                 </td>
                 <td className="px-3 py-3">
-                  <StatusBadge tone={priorityTone(task.priority)}>{task.priority}</StatusBadge>
+                  <StatusBadge tone={taskPriorityTone(task.priority)}>{task.priorityLabel}</StatusBadge>
                 </td>
                 <td className="px-3 py-3">
                   <AvatarWithName name={task.assignee} />
                 </td>
-                <td className="px-3 py-3 text-xs text-foreground">{task.dueDate}</td>
                 <td className="px-3 py-3 text-xs text-muted-foreground">{task.updated}</td>
                 <td className="px-3 py-3 text-right">
                   <button
@@ -133,7 +124,7 @@ export function TasksWorkspace() {
         </table>
         {visibleTasks.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
-            No preview tasks match these filters.
+            No tasks match these filters.
           </p>
         ) : null}
       </div>

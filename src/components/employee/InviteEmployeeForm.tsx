@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { LoaderCircle, Mail, Send, UserPlus } from "lucide-react";
 import { employeeRoles, roleLabels, type EmployeeRole } from "@/lib/employee/roles";
 
 export function InviteEmployeeForm() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState<EmployeeRole>("viewer");
@@ -35,6 +37,7 @@ export function InviteEmployeeForm() {
       setEmail("");
       setFullName("");
       setRole("viewer");
+      router.refresh();
     } catch {
       setError("The invitation service could not be reached.");
     } finally {

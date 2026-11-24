@@ -2,22 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowUpRight,
+  CheckCircle2,
   FolderKanban,
   ListTodo,
   Plus,
   ShieldCheck,
   Sparkles,
-  Users,
   type LucideIcon,
 } from "lucide-react";
-import {
-  activities,
-  approvals,
-  overviewMetrics,
-  projects,
-  tasks,
-  type ProjectStatus,
-} from "@/lib/employee/mockData";
 import { ActivityTimeline } from "@/components/employee/ActivityTimeline";
 import { AssistantWorkspace } from "@/components/employee/AssistantWorkspace";
 import { Avatar } from "@/components/employee/Avatar";
@@ -29,31 +21,72 @@ import { SectionCard } from "@/components/employee/SectionCard";
 import { StatusBadge } from "@/components/employee/StatusBadge";
 import { requireEmployee } from "@/lib/employee/access";
 import { hasPermission } from "@/lib/employee/roles";
+import { getEmployeeCompanyData } from "@/lib/employee/workspaceData";
+import { projectStatusTone, taskPriorityTone } from "@/lib/employee/operationalTypes";
 
 export const metadata: Metadata = {
   title: "Overview",
 };
 
-const metricIcons: LucideIcon[] = [FolderKanban, ListTodo, ShieldCheck, Users];
+const metricIcons: LucideIcon[] = [FolderKanban, ListTodo, ShieldCheck, CheckCircle2];
 
-function projectTone(status: ProjectStatus) {
-  if (status === "On track") return "success" as const;
-  if (status === "At risk") return "warning" as const;
-  if (status === "Blocked") return "danger" as const;
-  return "neutral" as const;
+function countLabel(value: number): string {
+  return String(value).padStart(2, "0");
 }
 
 export default async function DashboardPage() {
   const { user } = await requireEmployee();
+  const { projects, tasks, approvals, activities } = await getEmployeeCompanyData();
   const canReviewApprovals = hasPermission(user.role, "approvals:review");
-  const myTasks = tasks.filter((task) => task.assignee === user.name).slice(0, 4);
+
+  const activeProjects = projects.filter((project) => project.status === "active").length;
+  const blockedProjects = projects.filter((project) => project.status === "blocked").length;
+  const openTasks = tasks.filter((task) => task.status !== "done").length;
+  const highPriorityTasks = tasks.filter(
+    (task) => task.priority === "high" && task.status !== "done"
+  ).length;
+  const completedTasks = tasks.filter((task) => task.status === "done").length;
+  const pendingApprovals = approvals.filter((approval) => approval.status === "pending");
+  const myTasks = tasks
+    .filter(
+      (task) =>
+        task.assigneeId === user.id || (!task.assigneeId && task.assignee === user.name)
+    )
+    .slice(0, 4);
+
+  const metrics = [
+    {
+      label: "Active projects",
+      value: countLabel(activeProjects),
+      hint: `${blockedProjects} blocked`,
+      tone: "teal" as const,
+    },
+    {
+      label: "Open tasks",
+      value: countLabel(openTasks),
+      hint: `${highPriorityTasks} high priority`,
+      tone: "blue" as const,
+    },
+    {
+      label: "Pending approvals",
+      value: countLabel(pendingApprovals.length),
+      hint: `${approvals.length} visible requests`,
+      tone: "amber" as const,
+    },
+    {
+      label: "Completed tasks",
+      value: countLabel(completedTasks),
+      hint: `Across ${projects.length} projects`,
+      tone: "violet" as const,
+    },
+  ];
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Company overview"
         title={`Good morning, ${user.name.split(" ")[0] ?? user.name}`}
-        description="A concentrated view of delivery health, work in progress, approvals, and the people keeping Marque moving."
+        description="A concentrated view of delivery health, work in progress, approvals, and recent operational activity."
         actions={
           <>
             <PreviewButton icon={Plus}>New project</PreviewButton>
@@ -69,7 +102,7 @@ export default async function DashboardPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {overviewMetrics.map((metric, index) => (
+        {metrics.map((metric, index) => (
           <MetricCard
             key={metric.label}
             label={metric.label}
@@ -84,7 +117,7 @@ export default async function DashboardPage() {
       <div className="grid gap-5 xl:grid-cols-3">
         <SectionCard
           title="Active projects"
-          description="Delivery portfolio snapshot from the preview dataset."
+          description="Live portfolio snapshot from records available to your account."
           className="xl:col-span-2"
           action={
             <Link
@@ -106,7 +139,9 @@ export default async function DashboardPage() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-medium text-muted-foreground">{project.code}</span>
-                    <StatusBadge tone={projectTone(project.status)}>{project.status}</StatusBadge>
+                    <StatusBadge tone={projectStatusTone(project.status)}>
+                      {project.statusLabel}
+                    </StatusBadge>
                   </div>
                   <p className="mt-1 truncate text-sm font-semibold text-foreground">{project.name}</p>
                 </div>
@@ -114,11 +149,16 @@ export default async function DashboardPage() {
                   <ProgressBar value={project.progress} className="flex-1" />
                   <Avatar name={project.owner} size="sm" />
                   <span className="hidden w-20 shrink-0 text-right text-[11px] text-muted-foreground sm:block">
-                    {project.dueDate}
+                    {project.updated}
                   </span>
                 </div>
               </div>
             ))}
+            {projects.length === 0 ? (
+              <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+                No projects are available to this account.
+              </p>
+            ) : null}
           </div>
         </SectionCard>
 
@@ -134,7 +174,7 @@ export default async function DashboardPage() {
       <div className="grid gap-5 xl:grid-cols-3">
         <SectionCard
           title="My tasks"
-          description="Assigned to the signed-in employee in the preview dataset."
+          description="Tasks assigned to you or owned by you in the accessible company records."
           className="xl:col-span-2"
           action={
             <Link
@@ -155,13 +195,18 @@ export default async function DashboardPage() {
                   <p className="mt-0.5 truncate text-sm font-medium text-foreground">{task.title}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
-                  <StatusBadge tone={task.priority === "Urgent" ? "danger" : "warning"}>
-                    {task.priority}
+                  <StatusBadge tone={taskPriorityTone(task.priority)}>
+                    {task.priorityLabel}
                   </StatusBadge>
-                  <span className="hidden text-xs text-muted-foreground sm:block">{task.dueDate}</span>
+                  <span className="hidden text-xs text-muted-foreground sm:block">{task.updated}</span>
                 </div>
               </div>
             ))}
+            {myTasks.length === 0 ? (
+              <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+                No tasks are assigned to you.
+              </p>
+            ) : null}
           </div>
         </SectionCard>
 
@@ -182,7 +227,7 @@ export default async function DashboardPage() {
           bodyClassName="p-0"
         >
           <div className="divide-y divide-border">
-            {approvals.slice(0, 3).map((approval) => (
+            {pendingApprovals.slice(0, 3).map((approval) => (
               <div key={approval.id} className="px-4 py-3 sm:px-5">
                 <p className="text-sm font-medium leading-snug text-foreground">{approval.title}</p>
                 <p className="mt-1 text-[11px] text-muted-foreground">
@@ -190,13 +235,18 @@ export default async function DashboardPage() {
                 </p>
               </div>
             ))}
+            {pendingApprovals.length === 0 ? (
+              <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+                No pending approvals.
+              </p>
+            ) : null}
           </div>
         </SectionCard>
       </div>
 
       <SectionCard
         title="Recent project activity"
-        description="Latest illustrative updates across projects, tasks, approvals, and automations."
+        description="Latest approval and tool activity available to your account."
         action={
           <Link
             href="/activity"
@@ -207,7 +257,13 @@ export default async function DashboardPage() {
           </Link>
         }
       >
-        <ActivityTimeline items={activities.slice(0, 5)} compact />
+        {activities.length > 0 ? (
+          <ActivityTimeline items={activities.slice(0, 5)} compact />
+        ) : (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            No recent activity is available.
+          </p>
+        )}
       </SectionCard>
     </div>
   );

@@ -77,7 +77,7 @@ export interface ActivityItem {
   action: string;
   target: string;
   time: string;
-  group: "Today" | "Yesterday";
+  group: "Today" | "Yesterday" | "Earlier";
   kind: "project" | "task" | "approval" | "team" | "automation";
 }
 
