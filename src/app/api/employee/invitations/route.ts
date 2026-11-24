@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
     const admin = createAdminClient();
     const { error } = await admin.auth.admin.inviteUserByEmail(payload.email.trim().toLowerCase(), {
       data: {
+        employee_invite: true,
         full_name: payload.fullName.trim(),
         role: payload.role,
       },
