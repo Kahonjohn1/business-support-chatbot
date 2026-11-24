@@ -13,7 +13,6 @@ import {
 import {
   activities,
   approvals,
-  currentUser,
   overviewMetrics,
   projects,
   tasks,
@@ -28,6 +27,8 @@ import { PreviewButton } from "@/components/employee/PreviewButton";
 import { ProgressBar } from "@/components/employee/ProgressBar";
 import { SectionCard } from "@/components/employee/SectionCard";
 import { StatusBadge } from "@/components/employee/StatusBadge";
+import { requireEmployee } from "@/lib/employee/access";
+import { hasPermission } from "@/lib/employee/roles";
 
 export const metadata: Metadata = {
   title: "Overview",
@@ -42,14 +43,16 @@ function projectTone(status: ProjectStatus) {
   return "neutral" as const;
 }
 
-export default function DashboardPage() {
-  const myTasks = tasks.filter((task) => task.assignee === currentUser.name).slice(0, 4);
+export default async function DashboardPage() {
+  const { user } = await requireEmployee();
+  const canReviewApprovals = hasPermission(user.role, "approvals:review");
+  const myTasks = tasks.filter((task) => task.assignee === user.name).slice(0, 4);
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Company overview"
-        title="Good morning, Jordan"
+        title={`Good morning, ${user.name.split(" ")[0] ?? user.name}`}
         description="A concentrated view of delivery health, work in progress, approvals, and the people keeping Marque moving."
         actions={
           <>
@@ -131,7 +134,7 @@ export default function DashboardPage() {
       <div className="grid gap-5 xl:grid-cols-3">
         <SectionCard
           title="My tasks"
-          description="Assigned to the preview user profile."
+          description="Assigned to the signed-in employee in the preview dataset."
           className="xl:col-span-2"
           action={
             <Link
@@ -166,13 +169,15 @@ export default function DashboardPage() {
           title="Pending approvals"
           description="Requests awaiting review."
           action={
-            <Link
-              href="/approvals"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-action-teal hover:underline dark:text-[#7FD9E2]"
-            >
-              Review
-              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-            </Link>
+            canReviewApprovals ? (
+              <Link
+                href="/approvals"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-action-teal hover:underline dark:text-[#7FD9E2]"
+              >
+                Review
+                <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
+            ) : undefined
           }
           bodyClassName="p-0"
         >

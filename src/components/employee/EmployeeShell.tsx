@@ -1,13 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
 import { EmployeeSidebar } from "./EmployeeSidebar";
 import { EmployeeTopbar } from "./EmployeeTopbar";
 import { MockDataNotice } from "./MockDataNotice";
+import type { EmployeeRole } from "@/lib/employee/roles";
 
-export function EmployeeShell({ children }: { children: ReactNode }) {
+interface EmployeeShellProps {
+  children: ReactNode;
+  user: {
+    name: string;
+    email: string | null;
+    role: EmployeeRole;
+  };
+}
+
+export function EmployeeShell({ children, user }: EmployeeShellProps) {
   const pathname = usePathname();
   const [openPath, setOpenPath] = useState<string | null>(null);
   const mobileOpen = openPath === pathname;
@@ -15,7 +24,7 @@ export function EmployeeShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <aside className="sticky top-0 hidden h-screen w-72 shrink-0 border-r border-border lg:block">
-        <EmployeeSidebar pathname={pathname} />
+        <EmployeeSidebar pathname={pathname} role={user.role} name={user.name} />
       </aside>
 
       {mobileOpen ? (
@@ -29,6 +38,8 @@ export function EmployeeShell({ children }: { children: ReactNode }) {
           <aside className="absolute inset-y-0 left-0 w-[min(20rem,88vw)] border-r border-border shadow-xl">
             <EmployeeSidebar
               pathname={pathname}
+              role={user.role}
+              name={user.name}
               onNavigate={() => setOpenPath(null)}
               showClose
             />
@@ -37,7 +48,7 @@ export function EmployeeShell({ children }: { children: ReactNode }) {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <EmployeeTopbar onMenuOpen={() => setOpenPath(pathname)} />
+        <EmployeeTopbar onMenuOpen={() => setOpenPath(pathname)} user={user} />
         <main className="flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
           <div className="mx-auto w-full max-w-[1500px] space-y-6">
             <MockDataNotice />

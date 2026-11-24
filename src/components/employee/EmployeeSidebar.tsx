@@ -3,15 +3,26 @@
 import Link from "next/link";
 import { ArrowUpRight, X } from "lucide-react";
 import { MarqueLogo } from "@/components/brand/MarqueLogo";
-import { employeeNavGroups } from "@/lib/employee/navigation";
+import { getEmployeeNavGroups } from "@/lib/employee/navigation";
+import { roleLabels, type EmployeeRole } from "@/lib/employee/roles";
 
 interface EmployeeSidebarProps {
   pathname: string;
+  role: EmployeeRole;
+  name: string;
   onNavigate?: () => void;
   showClose?: boolean;
 }
 
-export function EmployeeSidebar({ pathname, onNavigate, showClose = false }: EmployeeSidebarProps) {
+export function EmployeeSidebar({
+  pathname,
+  role,
+  name,
+  onNavigate,
+  showClose = false,
+}: EmployeeSidebarProps) {
+  const groups = getEmployeeNavGroups(role);
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
       <div className="flex items-center justify-between gap-2 border-b border-border px-5 py-4">
@@ -35,7 +46,7 @@ export function EmployeeSidebar({ pathname, onNavigate, showClose = false }: Emp
 
       <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-5" aria-label="Employee navigation">
         <div className="space-y-6">
-          {employeeNavGroups.map((group) => (
+          {groups.map((group) => (
             <div key={group.label}>
               <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                 {group.label}
@@ -58,7 +69,9 @@ export function EmployeeSidebar({ pathname, onNavigate, showClose = false }: Emp
                       >
                         <Icon
                           className={`h-4.5 w-4.5 shrink-0 ${
-                            isActive ? "text-action-teal dark:text-[#7FD9E2]" : "text-muted-foreground group-hover:text-foreground"
+                            isActive
+                              ? "text-action-teal dark:text-[#7FD9E2]"
+                              : "text-muted-foreground group-hover:text-foreground"
                           }`}
                           aria-hidden="true"
                         />
@@ -78,9 +91,9 @@ export function EmployeeSidebar({ pathname, onNavigate, showClose = false }: Emp
 
       <div className="border-t border-border p-3">
         <div className="rounded-xl border border-border bg-background p-3.5">
-          <p className="text-xs font-semibold text-foreground">Frontend preview</p>
+          <p className="text-xs font-semibold text-foreground">Signed in as {name}</p>
           <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-            Mock content only. Sign-in and live company data are not connected.
+            {roleLabels[role]} access. Employee accounts are issued by administrators.
           </p>
           <Link
             href="/"

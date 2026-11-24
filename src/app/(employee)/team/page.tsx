@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Building2, UserPlus, Users } from "lucide-react";
 import { teamMembers } from "@/lib/employee/mockData";
 import { AvatarWithName } from "@/components/employee/Avatar";
@@ -7,6 +8,8 @@ import { PageHeader } from "@/components/employee/PageHeader";
 import { PreviewButton } from "@/components/employee/PreviewButton";
 import { SectionCard } from "@/components/employee/SectionCard";
 import { StatusBadge } from "@/components/employee/StatusBadge";
+import { requireEmployee } from "@/lib/employee/access";
+import { hasPermission } from "@/lib/employee/roles";
 
 export const metadata: Metadata = {
   title: "Team",
@@ -14,14 +17,29 @@ export const metadata: Metadata = {
 
 const teams = ["Operations", "Product", "Engineering", "Support", "Partnerships"];
 
-export default function TeamPage() {
+export default async function TeamPage() {
+  const session = await requireEmployee();
+  const canInvite = hasPermission(session.user.role, "employees:invite");
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="People"
         title="Team"
         description="Employee directory, team structure, and invitation workflow for the internal operations platform."
-        actions={<PreviewButton icon={UserPlus}>Invite member</PreviewButton>}
+        actions={
+          canInvite ? (
+            <Link
+              href="/admin/employees"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-primary px-3.5 text-xs font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary-hover"
+            >
+              <UserPlus className="h-4 w-4" aria-hidden="true" />
+              Invite member
+            </Link>
+          ) : (
+            <PreviewButton icon={UserPlus}>Admin invitation only</PreviewButton>
+          )
+        }
       />
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -86,7 +104,7 @@ export default function TeamPage() {
         </SectionCard>
 
         <div className="space-y-5">
-          <InviteMemberPanel />
+          <InviteMemberPanel canInvite={canInvite} />
           <SectionCard title="Teams" bodyClassName="p-3">
             <ul className="space-y-1">
               {teams.map((team, index) => (

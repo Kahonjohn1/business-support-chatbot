@@ -6,16 +6,19 @@ import {
   Plug,
   ShieldCheck,
   Sparkles,
+  UserCog,
   Users,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
+import type { EmployeeRole } from "./roles";
 
 export interface EmployeeNavItem {
   href: string;
   label: string;
   description: string;
   icon: LucideIcon;
+  roles?: readonly EmployeeRole[];
 }
 
 export interface EmployeeNavGroup {
@@ -67,12 +70,14 @@ export const employeeNavGroups: EmployeeNavGroup[] = [
         label: "Automations",
         description: "Workflow runs",
         icon: Workflow,
+        roles: ["manager", "admin"],
       },
       {
         href: "/approvals",
         label: "Approvals",
         description: "Review queue",
         icon: ShieldCheck,
+        roles: ["manager", "admin"],
       },
     ],
   },
@@ -93,4 +98,25 @@ export const employeeNavGroups: EmployeeNavGroup[] = [
       },
     ],
   },
+  {
+    label: "Administration",
+    items: [
+      {
+        href: "/admin/employees",
+        label: "Employees",
+        description: "Invite and manage roles",
+        icon: UserCog,
+        roles: ["admin"],
+      },
+    ],
+  },
 ];
+
+export function getEmployeeNavGroups(role: EmployeeRole): EmployeeNavGroup[] {
+  return employeeNavGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.roles || item.roles.includes(role)),
+    }))
+    .filter((group) => group.items.length > 0);
+}

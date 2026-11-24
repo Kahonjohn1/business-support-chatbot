@@ -1,63 +1,46 @@
-import { Mail, Plus } from "lucide-react";
-import { Avatar } from "./Avatar";
+import Link from "next/link";
+import { ArrowUpRight, ShieldCheck } from "lucide-react";
 
-export function InviteMemberPanel() {
+export function InviteMemberPanel({ canInvite }: { canInvite: boolean }) {
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-border bg-background p-4">
         <p className="text-sm font-semibold text-foreground">Invite an employee</p>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Invitation delivery will be available when authentication and employee data are connected.
+          {canInvite
+            ? "Administrator invitations are sent through Supabase Auth with an assigned access role."
+            : "Employee invitations are restricted to administrators. Ask an Admin if access is needed."}
         </p>
 
-        <div className="mt-4 space-y-3">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-foreground">Work email</span>
-            <div className="relative">
-              <input
-                type="email"
-                readOnly
-                placeholder="name@marquetechnologies.com"
-                className="h-10 w-full rounded-lg border border-border bg-surface pl-3 pr-9 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
-              />
-              <Mail
-                className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-                aria-hidden="true"
-              />
-            </div>
-          </label>
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-foreground">Role</span>
-            <select
-              disabled
-              className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-xs text-muted-foreground"
-            >
-              <option>Select a role</option>
-              <option>Operations</option>
-              <option>Engineering</option>
-              <option>Support</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            disabled
-            className="flex h-10 w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-muted text-xs font-semibold text-muted-foreground opacity-80"
+        {canInvite ? (
+          <Link
+            href="/admin/employees"
+            className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary-hover"
           >
-            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            Send invitation preview
-          </button>
-        </div>
+            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            Open employee administration
+          </Link>
+        ) : (
+          <div className="mt-4 flex h-10 items-center justify-center gap-2 rounded-lg bg-muted text-xs font-semibold text-muted-foreground opacity-80">
+            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            Admin access required
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border border-border bg-background p-4">
-        <p className="text-xs font-semibold text-foreground">Outstanding invitations</p>
-        <div className="mt-3 flex items-center gap-2.5">
-          <Avatar name="Priya Kapoor" size="sm" />
-          <div className="min-w-0">
-            <p className="truncate text-xs font-medium text-foreground">Priya Kapoor</p>
-            <p className="truncate text-[11px] text-muted-foreground">Support Analyst · 3 days ago</p>
-          </div>
-        </div>
+        <p className="text-xs font-semibold text-foreground">Access model</p>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          Viewer, Staff, Manager, and Admin roles control which internal areas are available after
+          sign-in.
+        </p>
+        <Link
+          href="/admin/employees"
+          className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-semibold text-action-teal hover:underline dark:text-[#7FD9E2]"
+        >
+          View administration area
+          <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </Link>
       </div>
     </div>
   );

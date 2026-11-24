@@ -6,12 +6,15 @@ import { AutomationTable } from "@/components/employee/AutomationTable";
 import { PageHeader } from "@/components/employee/PageHeader";
 import { PreviewButton } from "@/components/employee/PreviewButton";
 import { SectionCard } from "@/components/employee/SectionCard";
+import { requirePermission } from "@/lib/employee/access";
 
 export const metadata: Metadata = {
   title: "Automations",
 };
 
-export default function AutomationsPage() {
+export default async function AutomationsPage() {
+  await requirePermission("automations:manage");
+
   const activeCount = automations.filter((item) => item.status === "Active").length;
   const pausedCount = automations.filter((item) => item.status === "Paused").length;
   const reviewCount = automations.filter((item) => item.status === "Needs review").length;

@@ -1,14 +1,53 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, Building2, Check, Lock, ShieldCheck } from "lucide-react";
+import { redirect } from "next/navigation";
+import { Suspense } from "react";
+import { ArrowLeft, Building2, Check } from "lucide-react";
+import { LoginForm } from "@/components/auth/LoginForm";
 import { MarqueLogo } from "@/components/brand/MarqueLogo";
 import { ThemeToggle } from "@/components/chat/ThemeToggle";
+import { safeNextPath } from "@/lib/employee/redirects";
+import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "Employee sign in",
 };
 
-export default function LoginPage() {
+interface LoginPageProps {
+  searchParams: Promise<{
+    next?: string;
+    error?: string;
+    reason?: string;
+    signedOut?: string;
+  }>;
+}
+
+function LoginFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 text-sm text-muted-foreground">
+      Loading employee sign in...
+    </div>
+  );
+}
+
+async function LoginContent({ searchParams }: LoginPageProps) {
+  const params = await searchParams;
+  const next = safeNextPath(params.next);
+
+  let notice: string | undefined;
+  if (params.signedOut === "1") notice = "You have been signed out of Marque Operations.";
+  if (params.reason === "authentication_required") {
+    notice = "Sign in to access the employee operations workspace.";
+  }
+
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getClaims();
+    if (data?.claims?.sub) redirect(next);
+  } catch {
+    notice = "Employee authentication is not configured for this deployment.";
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="flex items-center justify-between gap-3 px-4 py-4 sm:px-8">
@@ -44,7 +83,7 @@ export default function LoginPage() {
               {[
                 "Portfolio and task visibility",
                 "Approval and audit workflows",
-                "AI-assisted operations review",
+                "Role-based employee access",
               ].map((item) => (
                 <li key={item} className="flex items-center gap-2.5">
                   <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/15">
@@ -55,83 +94,31 @@ export default function LoginPage() {
               ))}
             </ul>
             <p className="relative mt-10 text-xs text-white/70">
-              Frontend phase · illustrative preview content only
+              Authorised employees only · No public registration
             </p>
           </section>
 
-          <section className="p-7 sm:p-10">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-action-teal dark:text-[#7FD9E2]">
-                Employee access
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight">Sign in to Marque Operations</h2>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Authentication will be connected in a later phase. This preview does not verify
-                credentials or enforce permissions.
-              </p>
-            </div>
-
-            <div className="mt-8 space-y-4">
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-foreground">Work email</span>
-                <div className="relative">
-                  <input
-                    type="email"
-                    readOnly
-                    placeholder="name@marquetechnologies.com"
-                    className="h-11 w-full rounded-xl border border-border bg-background px-3.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-                  />
-                  <Building2
-                    className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                </div>
-              </label>
-
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-foreground">Password</span>
-                <div className="relative">
-                  <input
-                    type="password"
-                    readOnly
-                    placeholder="••••••••••••"
-                    className="h-11 w-full rounded-xl border border-border bg-background px-3.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-                  />
-                  <Lock
-                    className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                </div>
-              </label>
-
-              <button
-                type="button"
-                disabled
-                className="flex h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-muted text-sm font-semibold text-muted-foreground opacity-80"
-              >
-                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-                Sign-in integration pending
-              </button>
-            </div>
-
-            <div
-              role="note"
-              className="mt-6 rounded-xl border border-border bg-background px-3.5 py-3 text-xs leading-relaxed text-muted-foreground"
-            >
-              This is a frontend-only preview. Fields are read-only and no authentication provider is
-              connected.
-            </div>
-
-            <Link
-              href="/"
-              className="mt-6 inline-flex items-center gap-1.5 text-xs font-semibold text-action-teal hover:underline dark:text-[#7FD9E2]"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-              Back to public customer support
-            </Link>
-          </section>
+          <LoginForm next={next} error={params.error} notice={notice} />
         </div>
       </main>
+
+      <footer className="px-4 pb-6 text-center sm:px-8">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-action-teal hover:underline dark:text-[#7FD9E2]"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          Back to public customer support
+        </Link>
+      </footer>
     </div>
+  );
+}
+
+export default function LoginPage({ searchParams }: LoginPageProps) {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginContent searchParams={searchParams} />
+    </Suspense>
   );
 }

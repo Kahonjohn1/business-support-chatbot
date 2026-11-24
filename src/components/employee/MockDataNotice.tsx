@@ -8,9 +8,8 @@ export function MockDataNotice() {
     >
       <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
       <p>
-        <span className="font-semibold">Frontend preview.</span> All records shown here are
-        illustrative mock data. No employee data, authentication, Supabase, or live AI service is
-        connected in this phase.
+        <span className="font-semibold">Authenticated session.</span> Operational records shown
+        here are still illustrative mock data; live company data is not connected in this phase.
       </p>
     </div>
   );

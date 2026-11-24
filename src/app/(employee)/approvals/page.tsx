@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/employee/PageHeader";
 import { PreviewButton } from "@/components/employee/PreviewButton";
 import { SectionCard } from "@/components/employee/SectionCard";
 import { StatusBadge } from "@/components/employee/StatusBadge";
+import { requirePermission } from "@/lib/employee/access";
 
 export const metadata: Metadata = {
   title: "Approvals",
@@ -17,7 +18,9 @@ function approvalTone(status: Approval["status"]) {
   return "warning" as const;
 }
 
-export default function ApprovalsPage() {
+export default async function ApprovalsPage() {
+  await requirePermission("approvals:review");
+
   return (
     <div className="space-y-6">
       <PageHeader
