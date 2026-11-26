@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, X } from "lucide-react";
+import { ArrowUpRight, ChevronDown, LogOut, X } from "lucide-react";
 import { MarqueLogo } from "@/components/brand/MarqueLogo";
 import { getEmployeeNavGroups } from "@/lib/employee/navigation";
 import { roleLabels, type EmployeeRole } from "@/lib/employee/roles";
+import { Avatar } from "./Avatar";
 
 interface EmployeeSidebarProps {
   pathname: string;
   role: EmployeeRole;
   name: string;
+  email: string | null;
   onNavigate?: () => void;
   showClose?: boolean;
 }
@@ -18,6 +20,7 @@ export function EmployeeSidebar({
   pathname,
   role,
   name,
+  email,
   onNavigate,
   showClose = false,
 }: EmployeeSidebarProps) {
@@ -86,19 +89,52 @@ export function EmployeeSidebar({
         </div>
       </nav>
 
-      <div className="border-t border-border p-3">
-        <div className="rounded-xl border border-border bg-background p-3.5">
-          <p className="text-xs font-semibold text-foreground">Signed in as {name}</p>
-          <p className="mt-1 text-[11px] text-muted-foreground">{roleLabels[role]}</p>
-          <Link
-            href="/"
-            onClick={onNavigate}
-            className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-semibold text-action-teal hover:underline dark:text-[#7FD9E2]"
-          >
-            Public support site
-            <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-          </Link>
-        </div>
+      <div className="border-t border-border px-3 py-3">
+        <details className="group rounded-xl border border-border bg-background">
+          <summary className="flex cursor-pointer list-none items-center gap-3 rounded-xl px-2.5 py-2.5 transition-colors hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
+            <Avatar name={name} size="md" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs font-semibold text-foreground">{name}</span>
+              <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                {email ?? "No email on account"}
+              </span>
+              <span className="mt-1 block text-[10px] text-muted-foreground">
+                Role: <span className="font-medium text-foreground">{roleLabels[role]}</span>
+              </span>
+            </span>
+            <ChevronDown
+              className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            />
+          </summary>
+          <div className="space-y-1 border-t border-border px-2 py-2">
+            <button
+              type="button"
+              disabled
+              className="flex w-full cursor-not-allowed items-center justify-between rounded-lg px-2.5 py-2 text-xs font-medium text-muted-foreground opacity-70"
+            >
+              Account settings
+              <span className="text-[10px]">Pending</span>
+            </button>
+            <Link
+              href="/"
+              onClick={onNavigate}
+              className="flex items-center justify-between rounded-lg px-2.5 py-2 text-xs font-medium text-action-teal transition-colors hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:text-[#7FD9E2]"
+            >
+              Public support site
+              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+            <form action="/auth/sign-out" method="post">
+              <button
+                type="submit"
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-foreground transition-colors hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <LogOut className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                Sign out
+              </button>
+            </form>
+          </div>
+        </details>
       </div>
     </div>
   );

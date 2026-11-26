@@ -23,7 +23,12 @@ export function EmployeeShell({ children, user }: EmployeeShellProps) {
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <aside className="sticky top-0 hidden h-screen w-72 shrink-0 border-r border-border lg:block">
-        <EmployeeSidebar pathname={pathname} role={user.role} name={user.name} />
+        <EmployeeSidebar
+          pathname={pathname}
+          role={user.role}
+          name={user.name}
+          email={user.email}
+        />
       </aside>
 
       {mobileOpen ? (
@@ -39,6 +44,7 @@ export function EmployeeShell({ children, user }: EmployeeShellProps) {
               pathname={pathname}
               role={user.role}
               name={user.name}
+              email={user.email}
               onNavigate={() => setOpenPath(null)}
               showClose
             />
@@ -47,7 +53,7 @@ export function EmployeeShell({ children, user }: EmployeeShellProps) {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <EmployeeTopbar onMenuOpen={() => setOpenPath(pathname)} user={user} />
+        <EmployeeTopbar onMenuOpen={() => setOpenPath(pathname)} />
         <main className="flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
           <div className="mx-auto w-full max-w-[1500px] space-y-6">
             {children}
