@@ -3,7 +3,6 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, LoaderCircle, Lock, ShieldCheck } from "lucide-react";
-import { acceptMarqueInvitation } from "@/lib/employee/companyInvitations";
 import { createClient } from "@/lib/supabase/client";
 
 interface LoginFormProps {
@@ -45,14 +44,6 @@ export function LoginForm({ next, error, notice }: LoginFormProps) {
 
       if (signInError) {
         setFormError("The email or password is incorrect, or the account is not confirmed.");
-        setPending(false);
-        return;
-      }
-
-      try {
-        await acceptMarqueInvitation(supabase);
-      } catch {
-        setFormError("Sign-in succeeded, but the Marque Technologies invitation could not be accepted.");
         setPending(false);
         return;
       }
