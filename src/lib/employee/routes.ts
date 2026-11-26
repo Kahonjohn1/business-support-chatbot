@@ -2,6 +2,7 @@ export const employeeRoutePrefixes = [
   "/dashboard",
   "/projects",
   "/tasks",
+  "/my-tasks",
   "/team",
   "/assistant",
   "/approvals",

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import type { ReactNode } from "react";
 import { Suspense } from "react";
 import { EmployeeShell } from "@/components/employee/EmployeeShell";
@@ -6,10 +7,10 @@ import { requireEmployee } from "@/lib/employee/access";
 
 export const metadata: Metadata = {
   title: {
-    default: "Marque Operations",
-    template: "%s | Marque Operations",
+    default: "Marque Technologies Workspace",
+    template: "%s | Marque Technologies Workspace",
   },
-  description: "Internal Marque Technologies employee operations workspace.",
+  description: "Internal Marque Technologies workspace.",
 };
 
 function EmployeeLayoutFallback() {
@@ -21,6 +22,7 @@ function EmployeeLayoutFallback() {
 }
 
 async function AuthenticatedEmployeeLayout({ children }: { children: ReactNode }) {
+  await connection();
   const { user } = await requireEmployee();
   return <EmployeeShell user={user}>{children}</EmployeeShell>;
 }

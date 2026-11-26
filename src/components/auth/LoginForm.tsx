@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, LoaderCircle, Lock, ShieldCheck } from "lucide-react";
+import { acceptMarqueInvitation } from "@/lib/employee/companyInvitations";
 import { createClient } from "@/lib/supabase/client";
 
 interface LoginFormProps {
@@ -15,6 +16,8 @@ const errorMessages: Record<string, string> = {
   missing_auth_code: "The sign-in link did not include an authorisation code.",
   auth_callback_failed: "Supabase could not complete the sign-in. Please try again.",
   confirm_failed: "The invitation or recovery link could not be verified.",
+  company_invitation_failed:
+    "Sign-in succeeded, but the Marque Technologies invitation could not be accepted.",
   invalid_confirm_link: "This invitation link is invalid or incomplete.",
   configuration: "Employee authentication is not configured for this deployment.",
 };
@@ -46,6 +49,14 @@ export function LoginForm({ next, error, notice }: LoginFormProps) {
         return;
       }
 
+      try {
+        await acceptMarqueInvitation(supabase);
+      } catch {
+        setFormError("Sign-in succeeded, but the Marque Technologies invitation could not be accepted.");
+        setPending(false);
+        return;
+      }
+
       router.replace(next);
       router.refresh();
     } catch {
@@ -60,7 +71,9 @@ export function LoginForm({ next, error, notice }: LoginFormProps) {
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-action-teal dark:text-[#7FD9E2]">
           Employee access
         </p>
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight">Sign in to Marque Operations</h2>
+        <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+          Sign in to the Marque Technologies Workspace
+        </h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Use the work email and password supplied by your administrator. Public employee
           registration is not available.

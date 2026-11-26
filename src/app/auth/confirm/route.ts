@@ -1,5 +1,6 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import { acceptMarqueInvitation } from "@/lib/employee/companyInvitations";
 import { safeNextPath } from "@/lib/employee/redirects";
 import { createClient } from "@/lib/supabase/server";
 
@@ -20,8 +21,15 @@ export async function GET(request: NextRequest) {
 
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) return NextResponse.redirect(new URL(next, origin));
-    return NextResponse.redirect(new URL("/login?error=confirm_failed", origin));
+    if (error) return NextResponse.redirect(new URL("/login?error=confirm_failed", origin));
+
+    try {
+      await acceptMarqueInvitation(supabase);
+    } catch {
+      return NextResponse.redirect(new URL("/login?error=company_invitation_failed", origin));
+    }
+
+    return NextResponse.redirect(new URL(next, origin));
   }
 
   if (!tokenHash || !isOtpType(type)) {
@@ -31,6 +39,12 @@ export async function GET(request: NextRequest) {
   const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
   if (error) {
     return NextResponse.redirect(new URL("/login?error=confirm_failed", origin));
+  }
+
+  try {
+    await acceptMarqueInvitation(supabase);
+  } catch {
+    return NextResponse.redirect(new URL("/login?error=company_invitation_failed", origin));
   }
 
   return NextResponse.redirect(new URL(next, origin));

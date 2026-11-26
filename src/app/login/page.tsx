@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
@@ -22,22 +23,46 @@ interface LoginPageProps {
   }>;
 }
 
-function LoginFallback() {
+function LoginFormFallback() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4 text-sm text-muted-foreground">
-      Loading employee sign in...
-    </div>
+    <section className="p-7 sm:p-10" aria-busy="true">
+      <span className="sr-only">Loading employee sign in...</span>
+      <div className="h-3 w-28 rounded bg-muted/70" aria-hidden="true" />
+      <div className="mt-3 h-7 w-64 max-w-full rounded bg-muted/70" aria-hidden="true" />
+      <div className="mt-3 h-4 w-full max-w-sm rounded bg-muted/50" aria-hidden="true" />
+
+      <div className="mt-8 space-y-4" aria-hidden="true">
+        <div className="space-y-1.5">
+          <div className="h-3.5 w-20 rounded bg-muted/60" />
+          <div className="h-11 w-full rounded-xl border border-border/70 bg-muted/25" />
+        </div>
+        <div className="space-y-1.5">
+          <div className="h-3.5 w-16 rounded bg-muted/60" />
+          <div className="h-11 w-full rounded-xl border border-border/70 bg-muted/25" />
+        </div>
+        <div className="h-11 w-full rounded-xl bg-muted/50" />
+      </div>
+
+      <div
+        className="mt-6 h-14 w-full rounded-xl border border-border bg-muted/25"
+        aria-hidden="true"
+      />
+    </section>
   );
 }
 
-async function LoginContent({ searchParams }: LoginPageProps) {
+async function LoginSessionForm({ searchParams }: LoginPageProps) {
+  await connection();
+
   const params = await searchParams;
   const next = safeNextPath(params.next);
 
   let notice: string | undefined;
-  if (params.signedOut === "1") notice = "You have been signed out of Marque Operations.";
+  if (params.signedOut === "1") {
+    notice = "You have been signed out of the Marque Technologies Workspace.";
+  }
   if (params.reason === "authentication_required") {
-    notice = "Sign in to access the employee operations workspace.";
+    notice = "Sign in to access the Marque Technologies Workspace.";
   }
 
   try {
@@ -48,6 +73,10 @@ async function LoginContent({ searchParams }: LoginPageProps) {
     notice = "Employee authentication is not configured for this deployment.";
   }
 
+  return <LoginForm next={next} error={params.error} notice={notice} />;
+}
+
+export default function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="flex items-center justify-between gap-3 px-4 py-4 sm:px-8">
@@ -98,7 +127,9 @@ async function LoginContent({ searchParams }: LoginPageProps) {
             </p>
           </section>
 
-          <LoginForm next={next} error={params.error} notice={notice} />
+          <Suspense fallback={<LoginFormFallback />}>
+            <LoginSessionForm searchParams={searchParams} />
+          </Suspense>
         </div>
       </main>
 
@@ -112,13 +143,5 @@ async function LoginContent({ searchParams }: LoginPageProps) {
         </Link>
       </footer>
     </div>
-  );
-}
-
-export default function LoginPage({ searchParams }: LoginPageProps) {
-  return (
-    <Suspense fallback={<LoginFallback />}>
-      <LoginContent searchParams={searchParams} />
-    </Suspense>
   );
 }

@@ -1,8 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { inviteEmployeeToMarque } from "@/lib/employee/companyInvitations";
 import { hasPermission, isEmployeeRole } from "@/lib/employee/roles";
 import { getEmployeeSession } from "@/lib/employee/session";
 import { isSameOriginRequest } from "@/lib/http/origin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 interface InvitationPayload {
   email?: unknown;
@@ -24,8 +26,11 @@ export async function POST(request: NextRequest) {
   }
 
   const session = await getEmployeeSession();
-  if (!session || !hasPermission(session.user.role, "employees:invite")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!session) {
+    return NextResponse.json({ error: "Sign in to invite employees." }, { status: 401 });
+  }
+  if (!hasPermission(session.user.role, "employees:invite")) {
+    return NextResponse.json({ error: "Administrator access required." }, { status: 403 });
   }
 
   let payload: InvitationPayload;
@@ -40,23 +45,22 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const admin = createAdminClient();
-    const { error } = await admin.auth.admin.inviteUserByEmail(payload.email.trim().toLowerCase(), {
-      data: {
-        employee_invite: true,
-        full_name: payload.fullName.trim(),
-        role: payload.role,
-      },
+    const result = await inviteEmployeeToMarque({
+      admin: createAdminClient(),
+      sessionClient: await createClient(),
+      administratorId: session.user.id,
+      email: payload.email,
+      fullName: payload.fullName,
+      role: payload.role,
       redirectTo: new URL("/auth/confirm", request.nextUrl.origin).toString(),
     });
 
-    if (error) {
-      const status = error.message.toLowerCase().includes("already") ? 409 : 502;
-      return NextResponse.json({ error: "Invitation could not be sent" }, { status });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    return NextResponse.json({ ok: true, message: "Invitation sent." });
+    return NextResponse.json({ ok: true, message: result.message });
   } catch {
-    return NextResponse.json({ error: "Supabase admin is not configured" }, { status: 503 });
+    return NextResponse.json({ error: "Invitation service is unavailable." }, { status: 503 });
   }
 }

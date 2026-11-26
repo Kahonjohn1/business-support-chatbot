@@ -37,6 +37,7 @@ interface TaskRow {
   priority: TaskPriority;
   assignee_id: string | null;
   assignee_label: string | null;
+  due_date: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -240,7 +241,7 @@ export async function getEmployeeCompanyData(): Promise<EmployeeCompanyData> {
   const taskResult = await supabase
     .from("tasks")
     .select(
-      "id, task_code, title, description, project_id, status, priority, assignee_id, assignee_label, created_by, created_at, updated_at"
+      "id, task_code, title, description, project_id, status, priority, assignee_id, assignee_label, due_date, created_by, created_at, updated_at"
     )
     .order("updated_at", { ascending: false });
   const approvalResult = await supabase
@@ -318,6 +319,7 @@ export async function getEmployeeCompanyData(): Promise<EmployeeCompanyData> {
     assigneeId: row.assignee_id,
     assignee:
       row.assignee_label?.trim() || nameFor(names, row.assignee_id, "Unassigned"),
+    dueDate: row.due_date ? formatDate(row.due_date) : "—",
     updated: relativeTime(row.updated_at, now),
     updatedAt: row.updated_at,
   }));

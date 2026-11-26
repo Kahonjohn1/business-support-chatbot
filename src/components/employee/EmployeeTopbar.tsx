@@ -53,8 +53,7 @@ export function EmployeeTopbar({ onMenuOpen, user }: EmployeeTopbarProps) {
       </button>
 
       <div className="hidden min-w-0 lg:block">
-        <p className="text-sm font-semibold text-foreground">Marque Technologies</p>
-        <p className="text-[11px] text-muted-foreground">Employee operations workspace</p>
+        <p className="text-sm font-semibold text-foreground">Marque Technologies Workspace</p>
       </div>
 
       <div className="relative ml-auto hidden w-full max-w-md md:block">

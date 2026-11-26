@@ -36,6 +36,8 @@ export const config = {
     "/projects/:path*",
     "/tasks",
     "/tasks/:path*",
+    "/my-tasks",
+    "/my-tasks/:path*",
     "/team",
     "/team/:path*",
     "/assistant",

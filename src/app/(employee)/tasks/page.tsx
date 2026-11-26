@@ -1,9 +1,15 @@
 import type { Metadata } from "next";
-import { AlertTriangle, CheckCircle2, ListTodo, Plus, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ListTodo, SlidersHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/employee/PageHeader";
 import { PreviewButton } from "@/components/employee/PreviewButton";
 import { SectionCard } from "@/components/employee/SectionCard";
+import { TaskCreateForm } from "@/components/employee/TaskCreateForm";
 import { TasksWorkspace } from "@/components/employee/TasksWorkspace";
+import { requireEmployee } from "@/lib/employee/access";
+import { assertMarqueAdministrator } from "@/lib/employee/companyInvitations";
+import { getTaskAssigneeOptions } from "@/lib/employee/projectTaskManagement";
+import { hasRoleAtLeast } from "@/lib/employee/roles";
+import { createClient } from "@/lib/supabase/server";
 import { getEmployeeCompanyData } from "@/lib/employee/workspaceData";
 
 export const metadata: Metadata = {
@@ -11,7 +17,18 @@ export const metadata: Metadata = {
 };
 
 export default async function TasksPage() {
-  const { tasks } = await getEmployeeCompanyData();
+  const session = await requireEmployee();
+  const { projects, tasks } = await getEmployeeCompanyData();
+  const supabase = await createClient();
+  const canManage =
+    hasRoleAtLeast(session.user.role, "manager") &&
+    !(await assertMarqueAdministrator(supabase, session.user.id));
+  const assignees = canManage ? await getTaskAssigneeOptions(supabase) : [];
+  const projectOptions = projects.map((project) => ({
+    id: project.id,
+    name: project.name,
+    code: project.code,
+  }));
   const openTasks = tasks.filter((task) => task.status !== "done").length;
   const inProgressTasks = tasks.filter((task) => task.status === "in_progress").length;
   const highPriorityTasks = tasks.filter(
@@ -29,7 +46,9 @@ export default async function TasksPage() {
             <PreviewButton icon={SlidersHorizontal} variant="secondary">
               Saved views
             </PreviewButton>
-            <PreviewButton icon={Plus}>New task</PreviewButton>
+            {canManage ? (
+              <TaskCreateForm projects={projectOptions} assignees={assignees} />
+            ) : null}
           </>
         }
       />
@@ -72,7 +91,7 @@ export default async function TasksPage() {
         description="Live records available through your company access policies."
         bodyClassName="p-4 sm:p-5"
       >
-        <TasksWorkspace tasks={tasks} />
+        <TasksWorkspace tasks={tasks} currentUserId={session.user.id} />
       </SectionCard>
     </div>
   );

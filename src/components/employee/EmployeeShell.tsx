@@ -4,7 +4,6 @@ import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { EmployeeSidebar } from "./EmployeeSidebar";
 import { EmployeeTopbar } from "./EmployeeTopbar";
-import { MockDataNotice } from "./MockDataNotice";
 import type { EmployeeRole } from "@/lib/employee/roles";
 
 interface EmployeeShellProps {
@@ -51,7 +50,6 @@ export function EmployeeShell({ children, user }: EmployeeShellProps) {
         <EmployeeTopbar onMenuOpen={() => setOpenPath(pathname)} user={user} />
         <main className="flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
           <div className="mx-auto w-full max-w-[1500px] space-y-6">
-            <MockDataNotice />
             {children}
           </div>
         </main>

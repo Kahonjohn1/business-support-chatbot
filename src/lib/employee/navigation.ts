@@ -1,5 +1,6 @@
 import {
   Activity,
+  CheckCircle2,
   FolderKanban,
   LayoutDashboard,
   ListTodo,
@@ -28,62 +29,63 @@ export interface EmployeeNavGroup {
 
 export const employeeNavGroups: EmployeeNavGroup[] = [
   {
-    label: "Workspace",
+    label: "Main",
     items: [
       {
         href: "/dashboard",
-        label: "Dashboard",
-        description: "Company overview",
+        label: "Home",
+        description: "Overview",
         icon: LayoutDashboard,
+      },
+      {
+        href: "/assistant",
+        label: "AI Assistant",
+        description: "Ask a question",
+        icon: Sparkles,
       },
       {
         href: "/projects",
         label: "Projects",
-        description: "Delivery portfolio",
+        description: "What is happening",
         icon: FolderKanban,
       },
       {
         href: "/tasks",
         label: "Tasks",
-        description: "Work queue",
+        description: "What needs doing",
         icon: ListTodo,
+      },
+      {
+        href: "/my-tasks",
+        label: "My tasks",
+        description: "Assigned to me",
+        icon: CheckCircle2,
       },
       {
         href: "/team",
         label: "Team",
-        description: "Employee directory",
+        description: "People at Marque",
         icon: Users,
-      },
-    ],
-  },
-  {
-    label: "Intelligence",
-    items: [
-      {
-        href: "/assistant",
-        label: "AI Assistant",
-        description: "Operations support",
-        icon: Sparkles,
-      },
-      {
-        href: "/automations",
-        label: "Automations",
-        description: "Workflow runs",
-        icon: Workflow,
-        roles: ["manager", "admin"],
       },
       {
         href: "/approvals",
         label: "Approvals",
-        description: "Review queue",
+        description: "Requests to review",
         icon: ShieldCheck,
         roles: ["manager", "admin"],
       },
     ],
   },
   {
-    label: "System",
+    label: "More",
     items: [
+      {
+        href: "/automations",
+        label: "Automations",
+        description: "Saved workflows",
+        icon: Workflow,
+        roles: ["manager", "admin"],
+      },
       {
         href: "/integrations",
         label: "Integrations",
@@ -93,18 +95,13 @@ export const employeeNavGroups: EmployeeNavGroup[] = [
       {
         href: "/activity",
         label: "Activity",
-        description: "Audit timeline",
+        description: "Recent changes",
         icon: Activity,
       },
-    ],
-  },
-  {
-    label: "Administration",
-    items: [
       {
         href: "/admin/employees",
         label: "Employees",
-        description: "Invite and manage roles",
+        description: "Invite and manage",
         icon: UserCog,
         roles: ["admin"],
       },

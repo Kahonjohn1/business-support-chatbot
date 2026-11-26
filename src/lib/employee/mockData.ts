@@ -81,13 +81,6 @@ export interface ActivityItem {
   kind: "project" | "task" | "approval" | "team" | "automation";
 }
 
-export interface AssistantMessage {
-  id: string;
-  role: "assistant" | "user";
-  content: string;
-  time: string;
-}
-
 export const currentUser = {
   name: "Jordan Blake",
   role: "Operations Manager",
@@ -532,40 +525,4 @@ export const activities: ActivityItem[] = [
     group: "Yesterday",
     kind: "approval",
   },
-];
-
-export const assistantMessages: AssistantMessage[] = [
-  {
-    id: "am1",
-    role: "user",
-    content: "What needs attention before the Marque Contact rollout?",
-    time: "09:41",
-  },
-  {
-    id: "am2",
-    role: "assistant",
-    content:
-      "Three items stand out in the preview data: one NFC demo task is awaiting review, the partner asset dependency is blocked, and an approval is pending for the updated support guidance. I would resolve the asset dependency first because it affects the partner onboarding track.",
-    time: "09:41",
-  },
-  {
-    id: "am3",
-    role: "user",
-    content: "Summarize project health for the leadership update.",
-    time: "09:43",
-  },
-  {
-    id: "am4",
-    role: "assistant",
-    content:
-      "Five projects are represented in the preview. Three are on track, one is at risk, one is blocked, and one is complete. The main delivery risk is the Operations console timeline; the main external dependency is partner asset licensing.",
-    time: "09:43",
-  },
-];
-
-export const assistantPrompts = [
-  "Summarize projects at risk",
-  "List my urgent tasks",
-  "Draft an approval review note",
-  "Find overdue automation runs",
 ];

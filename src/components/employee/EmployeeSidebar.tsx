@@ -28,9 +28,6 @@ export function EmployeeSidebar({
       <div className="flex items-center justify-between gap-2 border-b border-border px-5 py-4">
         <Link href="/dashboard" onClick={onNavigate} className="flex min-w-0 flex-col gap-1">
           <MarqueLogo width={132} height={54} priority className="max-h-9 w-auto" />
-          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            Employee operations
-          </span>
         </Link>
         {showClose ? (
           <button
@@ -92,9 +89,7 @@ export function EmployeeSidebar({
       <div className="border-t border-border p-3">
         <div className="rounded-xl border border-border bg-background p-3.5">
           <p className="text-xs font-semibold text-foreground">Signed in as {name}</p>
-          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-            {roleLabels[role]} access. Employee accounts are issued by administrators.
-          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">{roleLabels[role]}</p>
           <Link
             href="/"
             onClick={onNavigate}

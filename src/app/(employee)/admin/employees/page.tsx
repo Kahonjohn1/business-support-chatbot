@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { io } from "next/cache";
+import { Suspense } from "react";
 import { ShieldCheck, UserCog, Users } from "lucide-react";
 import { AvatarWithName } from "@/components/employee/Avatar";
 import { InviteEmployeeForm } from "@/components/employee/InviteEmployeeForm";
@@ -15,7 +17,24 @@ export const metadata: Metadata = {
   title: "Employee administration",
 };
 
-export default async function EmployeesAdminPage() {
+export default function EmployeesAdminPage() {
+  return (
+    <Suspense fallback={<EmployeesAdminFallback />}>
+      <EmployeesAdminContent />
+    </Suspense>
+  );
+}
+
+function EmployeesAdminFallback() {
+  return (
+    <div className="rounded-2xl border border-border bg-surface px-4 py-10 text-center text-sm text-muted-foreground">
+      Loading employee workspace...
+    </div>
+  );
+}
+
+async function EmployeesAdminContent() {
+  await io();
   const session = await requirePermission("employees:invite");
   const directory = await getEmployeeDirectory(session);
 

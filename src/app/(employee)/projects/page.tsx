@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
-import { FolderKanban, Plus, SlidersHorizontal } from "lucide-react";
+import { FolderKanban, SlidersHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/employee/PageHeader";
 import { PreviewButton } from "@/components/employee/PreviewButton";
+import { ProjectCreateForm } from "@/components/employee/ProjectCreateForm";
 import { ProgressBar } from "@/components/employee/ProgressBar";
 import { SectionCard } from "@/components/employee/SectionCard";
 import { StatusBadge } from "@/components/employee/StatusBadge";
+import { assertMarqueAdministrator } from "@/lib/employee/companyInvitations";
+import { hasRoleAtLeast } from "@/lib/employee/roles";
+import { requireEmployee } from "@/lib/employee/access";
+import { createClient } from "@/lib/supabase/server";
 import { getEmployeeCompanyData } from "@/lib/employee/workspaceData";
 import {
   projectStatusLabels,
@@ -20,7 +25,11 @@ export const metadata: Metadata = {
 const statusOrder: ProjectStatus[] = ["active", "planned", "blocked", "completed"];
 
 export default async function ProjectsPage() {
+  const session = await requireEmployee();
   const { projects } = await getEmployeeCompanyData();
+  const canManage =
+    hasRoleAtLeast(session.user.role, "manager") &&
+    !(await assertMarqueAdministrator(await createClient(), session.user.id));
   const statusCounts = statusOrder.map((status) => ({
     label: projectStatusLabels[status],
     value: projects.filter((project) => project.status === status).length,
@@ -38,7 +47,7 @@ export default async function ProjectsPage() {
             <PreviewButton icon={SlidersHorizontal} variant="secondary">
               Filters
             </PreviewButton>
-            <PreviewButton icon={Plus}>New project</PreviewButton>
+            {canManage ? <ProjectCreateForm /> : null}
           </>
         }
       />

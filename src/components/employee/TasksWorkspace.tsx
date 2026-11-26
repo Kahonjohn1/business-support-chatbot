@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MoreHorizontal } from "lucide-react";
 import { AvatarWithName } from "./Avatar";
 import { StatusBadge } from "./StatusBadge";
+import { TaskStatusControl } from "./TaskStatusControl";
 import {
   taskPriorityLabels,
   taskPriorityTone,
@@ -25,7 +25,13 @@ function priorityName(value: TaskPriority | "All"): string {
   return value === "All" ? "All" : taskPriorityLabels[value];
 }
 
-export function TasksWorkspace({ tasks }: { tasks: EmployeeTask[] }) {
+export function TasksWorkspace({
+  tasks,
+  currentUserId = null,
+}: {
+  tasks: EmployeeTask[];
+  currentUserId?: string | null;
+}) {
   const [status, setStatus] = useState<TaskStatus | "All">("All");
   const [priority, setPriority] = useState<TaskPriority | "All">("All");
 
@@ -79,15 +85,16 @@ export function TasksWorkspace({ tasks }: { tasks: EmployeeTask[] }) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] border-collapse text-left">
+        <table className="w-full min-w-[1020px] border-collapse text-left">
           <thead>
             <tr className="border-b border-border text-[11px] uppercase tracking-[0.1em] text-muted-foreground">
               <th className="px-3 py-2.5 font-semibold">Task</th>
               <th className="px-3 py-2.5 font-semibold">Status</th>
               <th className="px-3 py-2.5 font-semibold">Priority</th>
               <th className="px-3 py-2.5 font-semibold">Assignee</th>
+              <th className="px-3 py-2.5 font-semibold">Deadline</th>
               <th className="px-3 py-2.5 font-semibold">Updated</th>
-              <th className="px-3 py-2.5" />
+              <th className="px-3 py-2.5 text-right font-semibold">My status</th>
             </tr>
           </thead>
           <tbody>
@@ -107,16 +114,14 @@ export function TasksWorkspace({ tasks }: { tasks: EmployeeTask[] }) {
                 <td className="px-3 py-3">
                   <AvatarWithName name={task.assignee} />
                 </td>
+                <td className="px-3 py-3 text-xs text-muted-foreground">{task.dueDate}</td>
                 <td className="px-3 py-3 text-xs text-muted-foreground">{task.updated}</td>
                 <td className="px-3 py-3 text-right">
-                  <button
-                    type="button"
-                    disabled
-                    className="cursor-not-allowed rounded-lg p-1.5 text-muted-foreground opacity-60"
-                    aria-label={`Actions for ${task.code}`}
-                  >
-                    <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-                  </button>
+                  {currentUserId && task.assigneeId === currentUserId ? (
+                    <TaskStatusControl taskId={task.id} status={task.status} />
+                  ) : (
+                    <span className="text-[11px] text-muted-foreground">—</span>
+                  )}
                 </td>
               </tr>
             ))}

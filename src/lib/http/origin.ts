@@ -1,9 +1,11 @@
-export function isSameOriginRequest(request: Request): boolean {
+import type { NextRequest } from "next/server";
+
+export function isSameOriginRequest(request: NextRequest): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return false;
 
   try {
-    return new URL(origin).origin === new URL(request.url).origin;
+    return new URL(origin).origin === request.nextUrl.origin;
   } catch {
     return false;
   }

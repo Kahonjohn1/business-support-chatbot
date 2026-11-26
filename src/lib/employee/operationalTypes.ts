@@ -66,6 +66,7 @@ export interface EmployeeTask {
   priorityLabel: string;
   assigneeId: string | null;
   assignee: string;
+  dueDate: string;
   updated: string;
   updatedAt: string;
 }
