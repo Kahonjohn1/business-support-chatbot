@@ -135,7 +135,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
 
       <footer className="px-4 pb-6 text-center sm:px-8">
         <Link
-          href="/"
+          href="/support"
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-action-teal hover:underline dark:text-[#7FD9E2]"
         >
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />

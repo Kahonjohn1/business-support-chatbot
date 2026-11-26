@@ -117,7 +117,7 @@ export function EmployeeSidebar({
               <span className="text-[10px]">Pending</span>
             </button>
             <Link
-              href="/"
+              href="/support"
               onClick={onNavigate}
               className="flex items-center justify-between rounded-lg px-2.5 py-2 text-xs font-medium text-action-teal transition-colors hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:text-[#7FD9E2]"
             >

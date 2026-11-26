@@ -24,7 +24,7 @@ test("sidebar has one consolidated account menu with preserved account actions",
   assert.match(sidebarSource, /\{roleLabels\[role\]\}/);
   assert.match(sidebarSource, /Account settings/);
   assert.match(sidebarSource, /Pending/);
-  assert.match(sidebarSource, /href="\/"/);
+  assert.match(sidebarSource, /href="\/support"/);
   assert.match(sidebarSource, /action="\/auth\/sign-out" method="post"/);
 });
 

@@ -5,7 +5,9 @@ import { copyAuthHeaders, updateSession } from "@/lib/supabase/proxy";
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  if (pathname !== "/login" && !isEmployeeRoute(pathname)) {
+  const isLoginEntry = pathname === "/" || pathname === "/login";
+
+  if (!isLoginEntry && !isEmployeeRoute(pathname)) {
     return NextResponse.next();
   }
 
@@ -29,6 +31,7 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/",
     "/login",
     "/dashboard",
     "/dashboard/:path*",
