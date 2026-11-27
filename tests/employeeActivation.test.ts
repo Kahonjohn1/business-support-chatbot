@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { parseInviteFragment } from "../src/lib/employee/invitationConfirmation.ts";
 import {
   isEmployeeInviteUser,
   isMissingRpcError,
@@ -150,4 +151,62 @@ test("existing employee invitation acceptance remains on the confirmation route"
   assert.match(confirmRoute, /if \(isEmployeeInviteUser\(data\.user\)\)/);
   assert.match(confirmRoute, /await acceptMarqueInvitation\(supabase\);/);
   assert.doesNotMatch(confirmRoute, /if \(!accepted\)/);
+});
+
+test("observed implicit invitation response is parsed without accepting other flows", () => {
+  const observed = parseInviteFragment(
+    "#access_token=sample-access&refresh_token=sample-refresh&expires_in=3600&token_type=bearer&type=invite"
+  );
+
+  assert.equal(observed.ok, true);
+  if (observed.ok) {
+    assert.equal(observed.accessToken, "sample-access");
+    assert.equal(observed.refreshToken, "sample-refresh");
+  }
+
+  assert.deepEqual(
+    parseInviteFragment("#access_token=sample-access&refresh_token=sample-refresh&type=invite"),
+    { ok: false, reason: "incomplete" }
+  );
+  assert.deepEqual(
+    parseInviteFragment(
+      "#access_token=sample-access&refresh_token=sample-refresh&expires_in=3600&token_type=bearer&type=recovery"
+    ),
+    { ok: false, reason: "unsupported_type" }
+  );
+  assert.deepEqual(parseInviteFragment(""), { ok: false, reason: "missing" });
+});
+
+test("implicit invitation response is completed on the dedicated session route", async () => {
+  const confirmRoute = await source("../src/app/auth/confirm/route.ts");
+  const invitationsRoute = await source("../src/app/api/employee/invitations/route.ts");
+  const sessionPage = await source("../src/app/auth/confirm/session/page.tsx");
+  const confirmationComponent = await source(
+    "../src/components/auth/InviteFragmentConfirmation.tsx"
+  );
+  const confirmationHelper = await source("../src/lib/employee/invitationConfirmation.ts");
+
+  assert.match(confirmRoute, /new URL\("\/auth\/confirm\/session", origin\)/);
+  assert.match(confirmRoute, /fragmentConfirmationRedirect\(origin, next\)/);
+  assert.match(
+    invitationsRoute,
+    /new URL\("\/auth\/confirm\/session", request\.nextUrl\.origin\)/
+  );
+
+  assert.match(sessionPage, /<InviteFragmentConfirmation next=\{safeNextPath\(params\.next\)\} \/>/);
+  assert.match(sessionPage, /await connection\(\);/);
+  assert.match(sessionPage, /<Suspense fallback=\{<ConfirmationFallback \/>\}>/);
+
+  assert.match(confirmationComponent, /parseInviteFragment\(window\.location\.hash\)/);
+  assert.match(confirmationComponent, /clearUrlFragment\(\)/);
+  assert.match(confirmationComponent, /detectSessionInUrl: false/);
+  assert.match(confirmationComponent, /supabase\.auth\.setSession\(\{/);
+  assert.match(confirmationComponent, /isEmployeeInviteUser\(data\.user\)/);
+  assert.match(confirmationComponent, /\/auth\/activate/);
+  assert.doesNotMatch(confirmationComponent, /console\./);
+  assert.doesNotMatch(confirmationComponent, /localStorage/);
+
+  assert.match(confirmationHelper, /history\.replaceState/);
+  assert.match(confirmationHelper, /params\.get\("type"\) !== "invite"/);
+  assert.match(confirmationHelper, /tokenType\?\.toLowerCase\(\) !== "bearer"/);
 });

@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       email: payload.email,
       fullName: payload.fullName,
       role: payload.role,
-      redirectTo: new URL("/auth/confirm", request.nextUrl.origin).toString(),
+      redirectTo: new URL("/auth/confirm/session", request.nextUrl.origin).toString(),
     });
 
     if (!result.ok) {

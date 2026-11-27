@@ -17,6 +17,12 @@ function activationRedirect(origin: string, next: string) {
   return NextResponse.redirect(activationUrl);
 }
 
+function fragmentConfirmationRedirect(origin: string, next: string) {
+  const confirmationUrl = new URL("/auth/confirm/session", origin);
+  confirmationUrl.searchParams.set("next", next);
+  return NextResponse.redirect(confirmationUrl);
+}
+
 async function acceptAndRedirect(
   supabase: SupabaseClient,
   origin: string,
@@ -55,7 +61,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (!tokenHash || !isOtpType(type)) {
-    return NextResponse.redirect(new URL("/login?error=invalid_confirm_link", origin));
+    return fragmentConfirmationRedirect(origin, next);
   }
 
   const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
@@ -65,7 +71,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (!data.user) {
-    return NextResponse.redirect(new URL("/login?error=invalid_confirm_link", origin));
+    return fragmentConfirmationRedirect(origin, next);
   }
 
   if (isEmployeeInviteUser(data.user)) return activationRedirect(origin, next);
