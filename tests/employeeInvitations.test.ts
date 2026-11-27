@@ -467,3 +467,18 @@ test("migration history defines the invitation RPCs used by onboarding", async (
     /grant execute on function public\.accept_company_invitation\(uuid\) to authenticated;/
   );
 });
+
+test("grants service_role profile upsert privileges without widening access", async () => {
+  const migration = await readFile(
+    new URL(
+      "../supabase/migrations/20261127010000_grant_employee_profiles_write_to_service_role.sql",
+      import.meta.url
+    ),
+    "utf8"
+  );
+
+  assert.equal(
+    migration.trim(),
+    "GRANT INSERT, UPDATE ON TABLE public.employee_profiles TO service_role;"
+  );
+});
