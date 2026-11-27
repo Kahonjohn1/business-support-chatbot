@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { ArrowLeft, Building2, ShieldCheck } from "lucide-react";
 import { ActivationForm } from "@/components/auth/ActivationForm";
 import { MarqueLogo } from "@/components/brand/MarqueLogo";
@@ -20,7 +21,27 @@ interface ActivationPageProps {
   }>;
 }
 
-export default async function ActivationPage({ searchParams }: ActivationPageProps) {
+function ActivationFormFallback() {
+  return (
+    <section className="p-7 sm:p-10" aria-busy="true">
+      <span className="sr-only">Loading employee activation...</span>
+      <div className="h-3 w-28 rounded bg-muted/70" aria-hidden="true" />
+      <div className="mt-8 space-y-4" aria-hidden="true">
+        <div className="space-y-1.5">
+          <div className="h-3.5 w-24 rounded bg-muted/60" />
+          <div className="h-11 w-full rounded-xl border border-border/70 bg-muted/25" />
+        </div>
+        <div className="space-y-1.5">
+          <div className="h-3.5 w-32 rounded bg-muted/60" />
+          <div className="h-11 w-full rounded-xl border border-border/70 bg-muted/25" />
+        </div>
+        <div className="h-11 w-full rounded-xl bg-muted/50" />
+      </div>
+    </section>
+  );
+}
+
+async function ActivationSessionForm({ searchParams }: ActivationPageProps) {
   await connection();
 
   const params = await searchParams;
@@ -32,6 +53,21 @@ export default async function ActivationPage({ searchParams }: ActivationPagePro
     redirect("/login?error=invalid_confirm_link");
   }
 
+  return (
+    <section className="p-7 sm:p-10">
+      <Link
+        href="/login"
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+        Back to sign in
+      </Link>
+      <ActivationForm email={data.user.email ?? null} next={next} />
+    </section>
+  );
+}
+
+export default function ActivationPage({ searchParams }: ActivationPageProps) {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="flex items-center justify-between gap-3 px-4 py-4 sm:px-8">
@@ -68,16 +104,9 @@ export default async function ActivationPage({ searchParams }: ActivationPagePro
             </p>
           </section>
 
-          <section className="p-7 sm:p-10">
-            <Link
-              href="/login"
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-              Back to sign in
-            </Link>
-            <ActivationForm email={data.user.email ?? null} next={next} />
-          </section>
+          <Suspense fallback={<ActivationFormFallback />}>
+            <ActivationSessionForm searchParams={searchParams} />
+          </Suspense>
         </div>
       </main>
 

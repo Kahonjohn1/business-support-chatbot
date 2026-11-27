@@ -86,6 +86,9 @@ test("activation page requires a verified invitation session and exposes no sign
   assert.match(activationPage, /supabase\.auth\.getUser\(\)/);
   assert.match(activationPage, /isEmployeeInviteUser\(data\.user\)/);
   assert.match(activationPage, /redirect\("\/login\?error=invalid_confirm_link"\)/);
+  assert.match(activationPage, /async function ActivationSessionForm/);
+  assert.match(activationPage, /await connection\(\);/);
+  assert.match(activationPage, /<Suspense fallback=\{<ActivationFormFallback \/>\}>/);
   assert.doesNotMatch(activationPage, /signUp/);
   assert.doesNotMatch(activationPage, /createUser/);
 });
