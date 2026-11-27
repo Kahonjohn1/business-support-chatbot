@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { isEmployeeInviteUser } from "@/lib/employee/invitationOnboarding";
 import { isEmployeeRoute } from "@/lib/employee/routes";
 import { copyAuthHeaders, updateSession } from "@/lib/supabase/proxy";
 
@@ -13,6 +14,15 @@ export async function proxy(request: NextRequest) {
 
   try {
     const { response, claims } = await updateSession(request);
+
+    if (
+      isEmployeeInviteUser({
+        user_metadata: claims?.user_metadata as Record<string, unknown> | undefined,
+      }) &&
+      pathname !== "/auth/activate"
+    ) {
+      return copyAuthHeaders(response, NextResponse.redirect(new URL("/auth/activate", request.url)));
+    }
 
     if (isEmployeeRoute(pathname) && !claims?.sub) {
       const loginUrl = new URL("/login", request.url);

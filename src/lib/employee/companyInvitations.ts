@@ -1,5 +1,12 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import type { EmployeeRole } from "./roles";
+import {
+  EMPLOYEE_INVITE_METADATA_KEY,
+  EMPTY_UUID,
+  isMissingRpcError,
+  logInvitationError,
+  type InvitationEmailStatus,
+} from "./invitationOnboarding.ts";
+import type { EmployeeRole } from "./roles.ts";
 
 export const MARQUE_TECHNOLOGIES_COMPANY_ID =
   "3f8a2d64-9c1e-4f5b-a7d0-6b2e1c9f4a80";
@@ -22,16 +29,24 @@ export type InvitationResult =
       kind: "invited" | "linked";
       message: string;
       membershipId: string | null;
+      emailStatus: InvitationEmailStatus;
     }
   | {
       ok: false;
       status: number;
       error: string;
+      emailStatus: InvitationEmailStatus;
     };
 
 interface MembershipRow {
   id: string;
   role: CompanyRole;
+  status: string;
+}
+
+interface EmployeeProfileRow {
+  full_name: string | null;
+  role: string;
   status: string;
 }
 
@@ -45,26 +60,113 @@ export function companyRoleForEmployeeRole(role: EmployeeRole): CompanyRole {
   return "viewer";
 }
 
-function failure(status: number, error: string): InvitationResult {
-  return { ok: false, status, error };
+function failure(
+  status: number,
+  error: string,
+  emailStatus: InvitationEmailStatus = "not_sent"
+): InvitationResult {
+  return { ok: false, status, error, emailStatus };
 }
 
-function rpcFailure(message: string): InvitationResult {
+function rpcFailure(
+  message: string,
+  emailStatus: InvitationEmailStatus = "not_sent"
+): InvitationResult {
+  if (isMissingRpcError({ message })) {
+    return failure(
+      503,
+      "Employee invitation service is not configured. A required database function is unavailable.",
+      emailStatus
+    );
+  }
+
   const normalized = message.toLowerCase();
 
   if (normalized.includes("already an active company member")) {
-    return failure(409, "This employee is already an active Marque Technologies member.");
+    return failure(
+      409,
+      "This employee is already an active Marque Technologies member.",
+      emailStatus
+    );
   }
 
   if (normalized.includes("only an active owner or admin")) {
-    return failure(403, "Marque Technologies administrator access is required.");
+    return failure(403, "Marque Technologies administrator access is required.", emailStatus);
   }
 
   if (normalized.includes("no account exists")) {
-    return failure(502, "The employee account must exist before company membership can be invited.");
+    return failure(
+      502,
+      "The employee account must exist before company membership can be invited.",
+      emailStatus
+    );
   }
 
-  return failure(502, "The Marque Technologies company invitation could not be created.");
+  return failure(
+    502,
+    "The Marque Technologies company invitation could not be created.",
+    emailStatus
+  );
+}
+
+function retryHint(emailStatus: InvitationEmailStatus): string {
+  if (emailStatus === "sent") {
+    return "The invitation email was sent, but setup did not complete. Retrying will repair the account without sending another invitation email.";
+  }
+
+  if (emailStatus === "unknown") {
+    return "Check whether the employee account exists, then retry; no duplicate invitation email will be sent if it does.";
+  }
+
+  return "Retrying is safe and will not send a duplicate invitation email when the employee account already exists.";
+}
+
+function withRetryHint(error: string, emailStatus: InvitationEmailStatus): string {
+  if (
+    emailStatus === "not_needed" ||
+    error.includes("without sending another invitation email") ||
+    error.includes("already an active") ||
+    error.includes("administrator access")
+  ) {
+    return error;
+  }
+
+  return `${error} ${retryHint(emailStatus)}`;
+}
+
+export async function verifyInvitationRpcAvailability(
+  sessionClient: SupabaseClient
+): Promise<InvitationResult | null> {
+  const probes = [
+    {
+      name: "invite_company_member",
+      args: {
+        p_company_id: EMPTY_UUID,
+        p_email: "",
+        p_role: "viewer",
+      },
+    },
+    {
+      name: "accept_company_invitation",
+      args: {
+        p_company_id: EMPTY_UUID,
+      },
+    },
+  ];
+
+  for (const probe of probes) {
+    const { error } = await sessionClient.rpc(probe.name, probe.args);
+
+    if (error && isMissingRpcError(error)) {
+      logInvitationError(`rpc_probe_${probe.name}`, error);
+      return failure(
+        503,
+        "Employee invitation service is not configured. A required database function is unavailable."
+      );
+    }
+  }
+
+  return null;
 }
 
 export async function assertMarqueAdministrator(
@@ -100,7 +202,7 @@ export async function findAuthUserByEmail(
   for (let page = 1; page <= 20; page += 1) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
     if (error) {
-      throw new Error("Unable to check whether this employee already exists.");
+      throw new Error(error.message);
     }
 
     const match = data.users.find(
@@ -125,10 +227,37 @@ export async function getMarqueMembership(
     .maybeSingle();
 
   if (error) {
-    throw new Error("Unable to check Marque Technologies membership.");
+    throw new Error(error.message);
   }
 
   return (data as MembershipRow | null) ?? null;
+}
+
+export async function getEmployeeProfile(
+  admin: SupabaseClient,
+  userId: string
+): Promise<EmployeeProfileRow | null> {
+  const { data, error } = await admin
+    .from("employee_profiles")
+    .select("full_name, role, status")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data as EmployeeProfileRow | null) ?? null;
+}
+
+function isProfileReady(profile: EmployeeProfileRow | null, role: EmployeeRole): boolean {
+  return Boolean(
+    profile &&
+      profile.status === "active" &&
+      profile.role === role &&
+      typeof profile.full_name === "string" &&
+      profile.full_name.trim().length > 0
+  );
 }
 
 export async function ensureEmployeeProfile(
@@ -148,7 +277,7 @@ export async function ensureEmployeeProfile(
   );
 
   if (error) {
-    throw new Error("Unable to link the employee profile.");
+    throw new Error(error.message);
   }
 }
 
@@ -172,10 +301,11 @@ export async function createCompanyInvitation(
     kind: "invited",
     message: "",
     membershipId: typeof data === "string" ? data : null,
+    emailStatus: "not_sent",
   };
 }
 
-export async function inviteEmployeeToMarque(
+async function inviteEmployeeToMarqueInternal(
   params: InvitationParams
 ): Promise<InvitationResult> {
   const authorizationFailure = await assertMarqueAdministrator(
@@ -184,25 +314,41 @@ export async function inviteEmployeeToMarque(
   );
   if (authorizationFailure) return authorizationFailure;
 
+  const rpcAvailabilityFailure = await verifyInvitationRpcAvailability(params.sessionClient);
+  if (rpcAvailabilityFailure) return rpcAvailabilityFailure;
+
   const normalizedEmail = normalizeEmail(params.email);
   const existingUser = await findAuthUserByEmail(params.admin, normalizedEmail);
   let userId: string | null = existingUser?.id ?? null;
   let kind: "invited" | "linked" = existingUser ? "linked" : "invited";
+  let emailStatus: InvitationEmailStatus = existingUser ? "not_needed" : "not_sent";
 
   if (existingUser) {
     const membership = await getMarqueMembership(params.sessionClient, existingUser.id);
 
     if (membership?.status === "active") {
-      return failure(409, "This employee is already an active Marque Technologies member.");
+      return failure(
+        409,
+        "This employee is already an active Marque Technologies member.",
+        emailStatus
+      );
     }
 
     if (membership?.status === "invited") {
-      return failure(409, "A Marque Technologies invitation is already pending for this employee.");
+      const profile = await getEmployeeProfile(params.admin, existingUser.id);
+
+      if (isProfileReady(profile, params.role)) {
+        return failure(
+          409,
+          "A Marque Technologies invitation is already pending. The employee can use the invitation link; no duplicate email was sent.",
+          emailStatus
+        );
+      }
     }
   } else {
     const { data, error } = await params.admin.auth.admin.inviteUserByEmail(normalizedEmail, {
       data: {
-        employee_invite: true,
+        [EMPLOYEE_INVITE_METADATA_KEY]: true,
         full_name: params.fullName.trim(),
         role: params.role,
       },
@@ -213,23 +359,44 @@ export async function inviteEmployeeToMarque(
       if (error.message.toLowerCase().includes("already")) {
         const racedUser = await findAuthUserByEmail(params.admin, normalizedEmail);
         if (!racedUser) {
-          return failure(409, "An invitation may already exist for this email.");
+          return failure(
+            409,
+            "An invitation may already exist for this email. Verify the employee account before retrying.",
+            "unknown"
+          );
         }
+
         userId = racedUser.id;
         kind = "linked";
+        emailStatus = "not_needed";
       } else {
-        return failure(502, "The employee invitation email could not be sent.");
+        logInvitationError("auth_invite", error);
+        return failure(
+          502,
+          "The employee invitation email could not be confirmed. Check whether the account exists, then retry; no duplicate email will be sent if it does.",
+          "unknown"
+        );
       }
     } else if (data.user?.id) {
       userId = data.user.id;
+      emailStatus = "sent";
     }
   }
 
   if (!userId) {
-    return failure(502, "The employee account could not be prepared.");
+    return failure(
+      502,
+      `The employee account could not be prepared. ${retryHint(emailStatus)}`,
+      emailStatus
+    );
   }
 
-  await ensureEmployeeProfile(params.admin, userId, params.fullName, params.role);
+  try {
+    await ensureEmployeeProfile(params.admin, userId, params.fullName, params.role);
+  } catch (error) {
+    logInvitationError("employee_profile", error);
+    return failure(503, retryHint(emailStatus), emailStatus);
+  }
 
   const invitation = await createCompanyInvitation(
     params.sessionClient,
@@ -237,17 +404,39 @@ export async function inviteEmployeeToMarque(
     params.role
   );
 
-  if (!invitation.ok) return invitation;
+  if (!invitation.ok) {
+    return {
+      ...invitation,
+      error: withRetryHint(invitation.error, emailStatus),
+      emailStatus,
+    };
+  }
 
   return {
     ok: true,
     kind,
-    message:
-      kind === "linked"
-        ? "Existing employee account linked to Marque Technologies."
-        : "Invitation sent. The employee will join Marque Technologies after accepting it.",
+      message:
+        kind === "linked"
+          ? "Employee account prepared and linked to Marque Technologies. No duplicate invitation email was sent."
+          : "Invitation sent. The employee will join Marque Technologies after activating the invitation link.",
     membershipId: invitation.membershipId,
+    emailStatus,
   };
+}
+
+export async function inviteEmployeeToMarque(
+  params: InvitationParams
+): Promise<InvitationResult> {
+  try {
+    return await inviteEmployeeToMarqueInternal(params);
+  } catch (error) {
+    logInvitationError("invite_employee", error);
+    return failure(
+      503,
+      "Invitation service is unavailable. Retrying is safe; no duplicate invitation email will be sent if the account already exists.",
+      "unknown"
+    );
+  }
 }
 
 export async function acceptMarqueInvitation(client: SupabaseClient): Promise<boolean> {
@@ -256,7 +445,12 @@ export async function acceptMarqueInvitation(client: SupabaseClient): Promise<bo
   });
 
   if (error) {
-    throw new Error("The Marque Technologies invitation could not be accepted.");
+    logInvitationError("accept_company_invitation", error);
+    throw new Error(
+      isMissingRpcError(error)
+        ? "Employee activation service is not configured. A required database function is unavailable."
+        : "The Marque Technologies invitation could not be accepted."
+    );
   }
 
   return data === true;

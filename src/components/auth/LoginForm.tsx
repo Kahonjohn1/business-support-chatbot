@@ -17,6 +17,7 @@ const errorMessages: Record<string, string> = {
   confirm_failed: "The invitation or recovery link could not be verified.",
   company_invitation_failed:
     "Sign-in succeeded, but the Marque Technologies invitation could not be accepted.",
+  no_pending_invitation: "The Marque Technologies invitation is no longer pending.",
   invalid_confirm_link: "This invitation link is invalid or incomplete.",
   configuration: "Employee authentication is not configured for this deployment.",
 };

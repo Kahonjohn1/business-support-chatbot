@@ -7,6 +7,7 @@ import { ArrowLeft, Building2, Check } from "lucide-react";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { MarqueLogo } from "@/components/brand/MarqueLogo";
 import { ThemeToggle } from "@/components/chat/ThemeToggle";
+import { isEmployeeInviteUser } from "@/lib/employee/invitationOnboarding";
 import { safeNextPath } from "@/lib/employee/redirects";
 import { createClient } from "@/lib/supabase/server";
 
@@ -68,7 +69,16 @@ async function LoginSessionForm({ searchParams }: LoginPageProps) {
   try {
     const supabase = await createClient();
     const { data } = await supabase.auth.getClaims();
-    if (data?.claims?.sub) redirect(next);
+    if (data?.claims?.sub) {
+      if (
+        isEmployeeInviteUser({
+          user_metadata: data.claims.user_metadata as Record<string, unknown> | undefined,
+        })
+      ) {
+        redirect("/auth/activate");
+      }
+      redirect(next);
+    }
   } catch {
     notice = "Employee authentication is not configured for this deployment.";
   }

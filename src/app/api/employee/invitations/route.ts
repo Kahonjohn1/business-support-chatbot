@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { inviteEmployeeToMarque } from "@/lib/employee/companyInvitations";
+import { logInvitationError } from "@/lib/employee/invitationOnboarding";
 import { hasPermission, isEmployeeRole } from "@/lib/employee/roles";
 import { getEmployeeSession } from "@/lib/employee/session";
 import { isSameOriginRequest } from "@/lib/http/origin";
@@ -56,11 +57,26 @@ export async function POST(request: NextRequest) {
     });
 
     if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
+      return NextResponse.json(
+        { error: result.error, emailStatus: result.emailStatus },
+        { status: result.status }
+      );
     }
 
-    return NextResponse.json({ ok: true, message: result.message });
-  } catch {
-    return NextResponse.json({ error: "Invitation service is unavailable." }, { status: 503 });
+    return NextResponse.json({
+      ok: true,
+      message: result.message,
+      emailStatus: result.emailStatus,
+      kind: result.kind,
+    });
+  } catch (error) {
+    logInvitationError("invitations_api", error);
+    return NextResponse.json(
+      {
+        error: "Invitation service is unavailable. Retrying is safe; no duplicate invitation email will be sent if the account already exists.",
+        emailStatus: "unknown",
+      },
+      { status: 503 }
+    );
   }
 }

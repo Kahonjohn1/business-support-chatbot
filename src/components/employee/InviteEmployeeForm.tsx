@@ -55,7 +55,7 @@ export function InviteEmployeeForm() {
           <p className="text-sm font-semibold text-foreground">Invite an employee</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             Supabase sends an invitation email and a Marque Technologies membership invitation.
-            Access is active after the invitee signs in and accepts the company invitation.
+            Access is active after the invitee activates the link and sets a password.
           </p>
         </div>
       </div>

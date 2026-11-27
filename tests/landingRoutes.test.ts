@@ -63,7 +63,9 @@ test("login page links to public support and redirects authenticated visits to t
 
   assert.match(loginSource, /<LoginForm next=\{next\}/);
   assert.match(loginSource, /const next = safeNextPath\(params\.next\);/);
-  assert.match(loginSource, /if \(data\?\.claims\?\.sub\) redirect\(next\);/);
+  assert.match(loginSource, /if \(data\?\.claims\?\.sub\)/);
+  assert.match(loginSource, /redirect\("\/auth\/activate"\);/);
+  assert.match(loginSource, /redirect\(next\);/);
   assert.match(loginSource, /href="\/support"/);
   assert.doesNotMatch(loginSource, /href="\/"/);
   assert.match(redirectsSource, /fallback = "\/dashboard"/);

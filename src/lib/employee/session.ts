@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { isEmployeeInviteUser } from "./invitationOnboarding";
 import { parseEmployeeRole, type EmployeeRole } from "./roles";
 
 export interface EmployeeSession {
@@ -16,6 +17,13 @@ export async function getEmployeeSession(): Promise<EmployeeSession | null> {
   const claims = data?.claims;
 
   if (error || !claims?.sub) return null;
+  if (
+    isEmployeeInviteUser({
+      user_metadata: claims.user_metadata as Record<string, unknown> | undefined,
+    })
+  ) {
+    return null;
+  }
 
   const { data: profile, error: profileError } = await supabase
     .from("employee_profiles")
