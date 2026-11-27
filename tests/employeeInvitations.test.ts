@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -438,4 +439,31 @@ test("accepts a pending Marque invitation through the existing RPC", async () =>
   assert.deepEqual(accepted.calls.rpc[0].args, {
     p_company_id: MARQUE_TECHNOLOGIES_COMPANY_ID,
   });
+});
+
+test("migration history defines the invitation RPCs used by onboarding", async () => {
+  const migration = await readFile(
+    new URL(
+      "../supabase/migrations/20261127000000_restore_company_invitation_rpcs.sql",
+      import.meta.url
+    ),
+    "utf8"
+  );
+
+  assert.match(
+    migration,
+    /create or replace function public\.invite_company_member\(\s*p_company_id uuid,\s*p_email text,\s*p_role public\.company_role\s*\)/
+  );
+  assert.match(
+    migration,
+    /create or replace function public\.accept_company_invitation\(p_company_id uuid\)/
+  );
+  assert.match(
+    migration,
+    /grant execute on function public\.invite_company_member\(uuid, text, public\.company_role\) to authenticated;/
+  );
+  assert.match(
+    migration,
+    /grant execute on function public\.accept_company_invitation\(uuid\) to authenticated;/
+  );
 });
