@@ -63,13 +63,30 @@ function titleCase(value: string): string {
     .join(" ");
 }
 
+function logEmployeeDirectoryError(scope: string, error: unknown): void {
+  const details = error && typeof error === "object" ? (error as Record<string, unknown>) : {};
+  const rawCode = typeof details.code === "string" ? details.code : null;
+  const rawMessage = typeof details.message === "string" ? details.message : null;
+  const message = rawMessage
+    ? rawMessage.replace(/https?:\/\/\S+/g, "[url]").slice(0, 300)
+    : null;
+
+  console.error("[employee-directory] " + scope, {
+    code: rawCode,
+    message,
+  });
+}
+
 async function loadAuthDetails(admin: ReturnType<typeof createAdminClient>) {
   const details = new Map<string, AuthDetails>();
   const perPage = 200;
 
   for (let page = 1; page <= 20; page += 1) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
-    if (error) break;
+    if (error) {
+      logEmployeeDirectoryError("auth-users-list", error);
+      break;
+    }
 
     for (const user of data.users) {
       details.set(user.id, {
@@ -101,7 +118,8 @@ export async function getEmployeeDirectory(
       const admin = createAdminClient();
       client = admin;
       authDetails = await loadAuthDetails(admin);
-    } catch {
+    } catch (error) {
+      logEmployeeDirectoryError("admin-client", error);
       client = await createClient();
     }
   } else {
@@ -114,6 +132,7 @@ export async function getEmployeeDirectory(
     .order("created_at", { ascending: false });
 
   if (error) {
+    logEmployeeDirectoryError("employee-profiles-select", error);
     throw new Error("Unable to load employee directory");
   }
 

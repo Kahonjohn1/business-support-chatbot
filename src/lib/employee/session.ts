@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isEmployeeInviteUser } from "./invitationOnboarding";
 import { parseEmployeeRole, type EmployeeRole } from "./roles";
@@ -12,6 +13,7 @@ export interface EmployeeSession {
 }
 
 export async function getEmployeeSession(): Promise<EmployeeSession | null> {
+  await connection();
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getClaims();
   const claims = data?.claims;
