@@ -54,12 +54,22 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { data: pendingMembership, error: membershipError } = await supabase
+  let admin;
+  try {
+    admin = createAdminClient();
+  } catch (createError) {
+    logInvitationError("activation_admin_client", createError);
+    return NextResponse.json(
+      { error: "Employee activation is not configured for this deployment." },
+      { status: 503 }
+    );
+  }
+
+  const { data: membership, error: membershipError } = await admin
     .from("company_memberships")
-    .select("id")
+    .select("id, status")
     .eq("company_id", MARQUE_TECHNOLOGIES_COMPANY_ID)
     .eq("user_id", data.user.id)
-    .eq("status", "invited")
     .maybeSingle();
 
   if (membershipError) {
@@ -69,21 +79,13 @@ export async function POST(request: NextRequest) {
       { status: 503 }
     );
   }
-  if (!pendingMembership) {
+  if (
+    !membership ||
+    (membership.status !== "invited" && membership.status !== "active")
+  ) {
     return NextResponse.json(
       { error: "No pending Marque Technologies invitation was found for this account." },
       { status: 409 }
-    );
-  }
-
-  let admin;
-  try {
-    admin = createAdminClient();
-  } catch (createError) {
-    logInvitationError("activation_admin_client", createError);
-    return NextResponse.json(
-      { error: "Employee activation is not configured for this deployment." },
-      { status: 503 }
     );
   }
 
@@ -99,20 +101,22 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  try {
-    const accepted = await acceptMarqueInvitation(supabase);
-    if (!accepted) {
+  if (membership.status === "invited") {
+    try {
+      const accepted = await acceptMarqueInvitation(supabase);
+      if (!accepted) {
+        return NextResponse.json(
+          { error: "Your password was set, but the invitation was no longer pending. Sign in normally or ask for a new invitation." },
+          { status: 409 }
+        );
+      }
+    } catch (acceptError) {
+      logInvitationError("activation_accept", acceptError);
       return NextResponse.json(
-        { error: "Your password was set, but the invitation was no longer pending. Sign in normally or ask for a new invitation." },
-        { status: 409 }
+        { error: "Your password was set, but the Marque Technologies invitation could not be accepted. You can retry safely." },
+        { status: 503 }
       );
     }
-  } catch (acceptError) {
-    logInvitationError("activation_accept", acceptError);
-    return NextResponse.json(
-      { error: "Your password was set, but the Marque Technologies invitation could not be accepted. You can retry safely." },
-      { status: 503 }
-    );
   }
 
   const { error: flagError } = await admin.auth.admin.updateUserById(data.user.id, {

@@ -126,12 +126,40 @@ test("activation rejects missing pending memberships without creating accounts",
   assert.doesNotMatch(apiRoute, /signUp/);
   assert.doesNotMatch(apiRoute, /createUser/);
 
-  const membershipCheckIndex = apiRoute.indexOf('.from("company_memberships")');
+  const adminClientIndex = apiRoute.indexOf("createAdminClient()");
+  const membershipCheckIndex = apiRoute.search(/await admin\s*\.from\("company_memberships"\)/);
   const passwordSetIndex = apiRoute.indexOf("password: payload.password");
-  assert.ok(membershipCheckIndex >= 0);
+  assert.ok(adminClientIndex > 0);
+  assert.ok(membershipCheckIndex > adminClientIndex);
   assert.ok(membershipCheckIndex < passwordSetIndex);
   assert.match(apiRoute, /const \{ error: flagError \}/);
   assert.match(apiRoute, /if \(flagError\)/);
+});
+
+test("activation verifies membership without depending on invitee RLS visibility", async () => {
+  const apiRoute = await source("../src/app/api/employee/activate/route.ts");
+
+  assert.match(apiRoute, /const \{ data: membership, error: membershipError \} = await admin/);
+  assert.match(apiRoute, /await admin\s*\.from\("company_memberships"\)/);
+  assert.match(apiRoute, /\.select\("id, status"\)/);
+  assert.doesNotMatch(apiRoute, /supabase\s*\.from\("company_memberships"\)/);
+  assert.match(apiRoute, /membership\.status !== "invited" && membership\.status !== "active"/);
+});
+
+test("activation retry tolerates an already accepted membership with stale invite metadata", async () => {
+  const apiRoute = await source("../src/app/api/employee/activate/route.ts");
+  const acceptIndex = apiRoute.indexOf('if (membership.status === "invited")');
+  const flagIndex = apiRoute.indexOf("[EMPLOYEE_INVITE_METADATA_KEY]: false");
+
+  assert.ok(acceptIndex > 0);
+  assert.ok(flagIndex > acceptIndex);
+
+  const acceptBlock = apiRoute.slice(
+    acceptIndex,
+    apiRoute.indexOf("const { error: flagError }", acceptIndex)
+  );
+  assert.match(acceptBlock, /acceptMarqueInvitation\(supabase\)/);
+  assert.match(acceptBlock, /if \(!accepted\)/);
 });
 
 test("existing employee invitation acceptance remains on the confirmation route", async () => {
